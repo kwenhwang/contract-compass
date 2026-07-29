@@ -11,7 +11,11 @@ from backend.models.response import (
     NextStepQuestion, FinalRecommendation,
 )
 from backend.api.deps import get_rule_engine, get_rag_service, get_llm, get_session_store, get_usage_logger
-from backend.services.rate_limiter import rate_limit_llm, record_llm_call
+from backend.services.rate_limiter import rate_limit_llm_soft, record_llm_call
+
+
+class LLMBudgetExhausted(RuntimeError):
+    """일일 LLM 캡 소진 — LLM 보조설명만 생략하고 룰엔진 폴백으로 응답하기 위한 신호."""
 from backend.services.thresholds import ANNOUNCEMENT_LIMIT, SME_SMALL_ENTERPRISE_UPPER
 
 router = APIRouter(prefix="/filter", tags=["filter"])
@@ -107,8 +111,10 @@ async def step1(
     llm=Depends(get_llm),
     sessions=Depends(get_session_store),
     usage_logger=Depends(get_usage_logger),
-    client_ip: str = Depends(rate_limit_llm),
+    llm_quota: tuple = Depends(rate_limit_llm_soft),
 ):
+    # 캡 소진이어도 결정론 판정은 계속 — llm_allowed=False면 LLM 설명만 생략(룰 폴백).
+    client_ip, llm_allowed = llm_quota
     _t0 = time.monotonic()
     params = req.model_dump()
     # 공사 전문분야 미입력 시 일반건설로 기본값 설정 (general CST 규칙이 construction_specialty="general" 조건을 가짐)
@@ -178,7 +184,9 @@ async def step1(
     step1_fallback_reason = None
     try:
         if _cached is None:
-            record_llm_call(client_ip)  # 실제 LLM 호출(캐시 미스)만 카운트 — IP별 + 전역 일일 상한
+            if not llm_allowed:
+                raise LLMBudgetExhausted("일일 LLM 상한 도달 — 룰엔진 단독 응답")
+            record_llm_call(client_ip)  # 실제 LLM 호출(캐시 미스)만 카운트 — IP별 + 스코프별 일일 상한
             raw = await llm.complete(system_prompt, user_msg, json_mode=True)
             parsed = json.loads(raw)
             _cache_set(_ck, parsed)
@@ -471,8 +479,10 @@ async def step2(
     llm=Depends(get_llm),
     sessions=Depends(get_session_store),
     usage_logger=Depends(get_usage_logger),
-    client_ip: str = Depends(rate_limit_llm),
+    llm_quota: tuple = Depends(rate_limit_llm_soft),
 ):
+    # 캡 소진이어도 결정론 판정은 계속 — llm_allowed=False면 LLM 설명만 생략(룰 폴백).
+    client_ip, llm_allowed = llm_quota
     _t0 = time.monotonic()
     session = sessions.get(req.session_id)
     if session is None:
@@ -546,7 +556,9 @@ async def step2(
     step2_fallback_reason = None
     try:
         if _s2_cached is None:
-            record_llm_call(client_ip)  # 실제 LLM 호출(캐시 미스)만 카운트 — IP별 + 전역 일일 상한
+            if not llm_allowed:
+                raise LLMBudgetExhausted("일일 LLM 상한 도달 — 룰엔진 단독 응답")
+            record_llm_call(client_ip)  # 실제 LLM 호출(캐시 미스)만 카운트 — IP별 + 스코프별 일일 상한
             raw = await llm.complete(system_prompt, user_msg, json_mode=True)
             parsed = json.loads(raw)
             rec_data = parsed.get("final_recommendation", {})

@@ -51,7 +51,8 @@ def test_check_blocks_at_cap_with_429(tmp_path):
         cap.check()      # 2 >= 2 → 차단
     assert ei.value.status_code == 429
     assert ei.value.detail["error"] == "daily_cap_exceeded"
-    assert "이용이 많습니다" in ei.value.detail["message"]
+    assert "이용량을 모두 사용" in ei.value.detail["message"]
+    assert int(ei.value.headers["Retry-After"]) >= 60  # UTC 자정까지 실시간 계산
 
 
 def test_date_rollover_resets_counter(tmp_path):

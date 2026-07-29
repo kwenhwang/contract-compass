@@ -52,6 +52,7 @@ def main() -> int:
     bank = json.loads((ROOT / "tests" / "qa_bank.json").read_text(encoding="utf-8"))["items"]
     fails: list[str] = []
     errors = 0
+    skipped = 0
     headers = _auth_headers()
     if not headers:
         print("[warn] SUPABASE_JWT_SECRET 미확보 — 익명 모드(무료 2회 후 401 예상)")
@@ -60,6 +61,12 @@ def main() -> int:
             try:
                 r = c.post(f"{args.base}/api/v1/ask", json={"question": item["q"]},
                            headers=headers)
+                # 일일 LLM 캡 소진(429 daily_cap_exceeded)은 회귀 실패가 아니라 예산 문제 —
+                # 남은 문항을 SKIP으로 중단해 캡 소진이 ERR 오탐·ops 오보고로 번지지 않게 한다.
+                if r.status_code == 429 and "daily_cap_exceeded" in r.text:
+                    skipped = len(bank) - i
+                    print(f"[SKIP] {item['id']} 이후 {skipped}문항 — 일일 LLM 캡 소진(내부 예산)")
+                    break
                 r.raise_for_status()
                 answer = r.json().get("answer", "")
             except Exception as e:
@@ -84,7 +91,8 @@ def main() -> int:
                 time.sleep(args.pace)
 
     total = len(bank)
-    print(f"\n결과: PASS {total - len(fails) - errors} / FAIL {len(fails)} / ERR {errors} (총 {total})")
+    passed = total - len(fails) - errors - skipped
+    print(f"\n결과: PASS {passed} / FAIL {len(fails)} / ERR {errors} / SKIP {skipped} (총 {total})")
     if errors >= total // 2:
         return 2  # 수집 실패
     return 1 if fails else 0

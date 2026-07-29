@@ -4,6 +4,7 @@ chroma_db/
 logs/
 data/sessions.db
 data/openai_daily_cap.json
+data/openai_daily_cap_internal.json
 data/feedback_shots/
 data/source_docs/
 tools/laws/*.xml

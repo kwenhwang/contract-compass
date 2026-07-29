@@ -32,6 +32,10 @@ logger = logging.getLogger(__name__)
 LIMITS_LLM = {"minute": 10, "hour": 100, "day": 500}
 WINDOWS = {"minute": 60, "hour": 3600, "day": 86400}
 
+#: 루프백 = 내부 트래픽(MCP 서버·야간 QA 등 localhost 직결). nginx 경유 외부 요청은
+#: 항상 XFF에 실 IP가 실리므로 여기 해당하지 않는다 (_get_raw_ip가 XFF 루프백 스푸핑 차단).
+_LOOPBACK_IPS = {"127.0.0.1", "::1", "localhost"}
+
 _WHITELIST = set(
     ip.strip()
     for ip in (os.environ.get("RATE_LIMIT_WHITELIST", "127.0.0.1") or "").split(",")
@@ -57,9 +61,15 @@ class RateLimiter:
         self._blocked_count: dict[str, int] = defaultdict(int)
 
     def _get_raw_ip(self, request: Request) -> str:
+        # XFF의 루프백 항목은 신뢰하지 않는다 — 외부 클라이언트가 "X-Forwarded-For:
+        # 127.0.0.1"을 실어 화이트리스트·내부예산 스코프를 가장할 수 있기 때문.
+        # nginx($proxy_add_x_forwarded_for)가 실제 peer를 뒤에 덧붙이므로 첫 비루프백을 취한다.
         xff = request.headers.get("x-forwarded-for")
         if xff:
-            return xff.split(",")[0].strip()
+            for part in xff.split(","):
+                ip = part.strip()
+                if ip and ip not in _LOOPBACK_IPS:
+                    return ip
         if request.client:
             return request.client.host
         return "unknown"
@@ -151,14 +161,21 @@ class DailyCallCap:
     #: 텔레그램 경보 임계(캡 대비 %). 각 임계는 하루 1회만 발송.
     ALERT_THRESHOLDS_PCT: tuple[int, ...] = (80, 100)
 
-    def __init__(self, cap: int, path: str) -> None:
+    def __init__(self, cap: int, path: str, label: str = "공개") -> None:
         self._cap = cap
         self._path = Path(path)
         self._lock = Lock()
+        self._label = label
 
     @staticmethod
     def _today() -> str:
         return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    @staticmethod
+    def _seconds_to_reset() -> int:
+        """UTC 자정(카운터 리셋 시각 = KST 09:00)까지 남은 초."""
+        now = datetime.now(timezone.utc)
+        return max(60, 86400 - (now.hour * 3600 + now.minute * 60 + now.second))
 
     def _read(self) -> tuple[str, int]:
         data = json.loads(self._path.read_text(encoding="utf-8"))
@@ -188,7 +205,7 @@ class DailyCallCap:
         """임계 도달 텔레그램 경보 — 어떤 예외도 record() 경로로 전파 금지."""
         icon = "🚨" if pct >= 100 else "⚠️"
         text = (
-            f"{icon} 계약나침반 LLM 비용가드: 오늘 OpenAI 호출 "
+            f"{icon} 계약나침반 LLM 비용가드[{self._label}]: 오늘 OpenAI 호출 "
             f"{count}/{self._cap} ({pct}%) 도달 — {date}"
         )
         try:
@@ -204,23 +221,29 @@ class DailyCallCap:
             return 0
         return count if date == self._today() else 0
 
+    def exhausted(self) -> bool:
+        """오늘 예산 소진 여부. cap<=0(비활성)·조회 실패는 False(fail-open)."""
+        if self._cap <= 0:
+            return False
+        try:
+            return self.current() >= self._cap
+        except Exception:  # noqa: BLE001 — 방어: 카운터 조회 실패가 정상요청을 막지 않음
+            return False
+
     def check(self) -> None:
         """상한 초과 시 429. cap<=0이면 비활성(무제한). 조회 실패는 통과(fail-open)."""
-        if self._cap <= 0:
-            return
-        try:
-            cur = self.current()
-        except Exception:  # noqa: BLE001 — 방어: 카운터 조회 실패가 정상요청을 막지 않음
-            return
-        if cur >= self._cap:
+        if self.exhausted():
+            retry = self._seconds_to_reset()
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail={
                     "error": "daily_cap_exceeded",
-                    "message": "일시적으로 이용이 많습니다. 잠시 후 다시 시도해 주세요.",
+                    "message": "오늘의 AI 이용량을 모두 사용했습니다. "
+                               "매일 오전 9시(한국시간)에 초기화됩니다.",
                     "limit": self._cap,
+                    "retry_after": retry,
                 },
-                headers={"Retry-After": "3600"},
+                headers={"Retry-After": str(retry)},
             )
 
     def record(self) -> int:
@@ -253,10 +276,14 @@ class DailyCallCap:
 
 
 _limiter: RateLimiter | None = None
-_daily_cap: DailyCallCap | None = None
+_daily_caps: dict[bool, DailyCallCap] = {}
 
 # 기본 상한·카운터 경로 (env로 조정). 카운터는 data/ 아래 날짜별 JSON.
 _DEFAULT_CAP_FILE = str(BASE_DIR / "data" / "openai_daily_cap.json")
+# 내부(루프백) 트래픽 전용 카운터 — MCP·야간 QA가 공개 예산을 소진해 실사용자를
+# 막던 사고(2026-07-29, 228호출) 재발 방지. env INTERNAL_LLM_DAILY_CALL_CAP로 조정.
+_DEFAULT_INTERNAL_CAP = 300
+_DEFAULT_INTERNAL_CAP_FILE = str(BASE_DIR / "data" / "openai_daily_cap_internal.json")
 
 
 def get_rate_limiter() -> RateLimiter:
@@ -266,9 +293,22 @@ def get_rate_limiter() -> RateLimiter:
     return _limiter
 
 
-def get_daily_cap() -> DailyCallCap:
-    global _daily_cap
-    if _daily_cap is None:
+def is_internal_ip(ip: str) -> bool:
+    """루프백 = 내부 자동화(MCP·QA). nginx 경유 외부는 XFF 실 IP라 해당 없음."""
+    return ip in _LOOPBACK_IPS
+
+
+def get_daily_cap(internal: bool = False) -> DailyCallCap:
+    cached = _daily_caps.get(internal)
+    if cached is not None:
+        return cached
+    if internal:
+        try:
+            cap = int(os.environ.get("INTERNAL_LLM_DAILY_CALL_CAP", _DEFAULT_INTERNAL_CAP))
+        except (TypeError, ValueError):
+            cap = _DEFAULT_INTERNAL_CAP
+        inst = DailyCallCap(cap, _DEFAULT_INTERNAL_CAP_FILE, label="내부")
+    else:
         cap, path = 500, _DEFAULT_CAP_FILE
         # 우선순위: 명시 env(테스트·운영 오버라이드) → 앱 설정(.env, pydantic) → 기본값.
         env_cap = os.environ.get("OPENAI_DAILY_CALL_CAP")
@@ -287,25 +327,37 @@ def get_daily_cap() -> DailyCallCap:
                 path = s.openai_daily_cap_file or path
             except Exception:  # noqa: BLE001 — 설정 로드 실패 시 안전 기본값
                 pass
-        _daily_cap = DailyCallCap(cap, path)
-    return _daily_cap
+        inst = DailyCallCap(cap, path, label="공개")
+    _daily_caps[internal] = inst
+    return inst
 
 
 def rate_limit_llm(request: Request) -> str:
-    """FastAPI Dependency — 모든 LLM 경로 공용.
+    """FastAPI Dependency — LLM이 필수인 경로(ask·classify) 공용.
 
-    IP당 한도(sliding window) + 전역 일일 상한(서킷브레이커) 둘 다 검사.
+    IP당 한도(sliding window) + 스코프별(공개/내부) 일일 상한 둘 다 검사.
     통과 시 raw IP 반환 — 실제 LLM 호출(캐시 미스) 시점에 caller가 record_llm_call(ip) 호출.
     """
     ip = get_rate_limiter().check(request, LIMITS_LLM)
-    get_daily_cap().check()
+    get_daily_cap(internal=is_internal_ip(ip)).check()
     return ip
 
 
+def rate_limit_llm_soft(request: Request) -> tuple[str, bool]:
+    """FastAPI Dependency — 결정론 응답이 가능한 경로(step1·step2) 전용.
+
+    IP당 한도는 동일하게 강제하되, 일일 캡 소진은 429 대신 (ip, llm_allowed=False)로
+    신호만 보낸다 — 룰엔진 판정은 LLM 없이도 유효하므로 캡이 결정론 기능까지 죽이면
+    안 된다(2026-07-30, 캡 소진 시 step1 전면 429 나던 결함 수정).
+    """
+    ip = get_rate_limiter().check(request, LIMITS_LLM)
+    return ip, not get_daily_cap(internal=is_internal_ip(ip)).exhausted()
+
+
 def record_llm_call(ip: str) -> None:
-    """실제 LLM 호출 1건 기록 — IP별 카운터 + 전역 일일 카운터 동시 반영.
+    """실제 LLM 호출 1건 기록 — IP별 카운터 + 스코프별(공개/내부) 일일 카운터 반영.
 
     캐시 히트는 caller가 이 함수를 부르지 않으므로 카운트 제외(과금 없는 호출은 예산 미차감).
     """
     get_rate_limiter().record(ip)
-    get_daily_cap().record()
+    get_daily_cap(internal=is_internal_ip(ip)).record()

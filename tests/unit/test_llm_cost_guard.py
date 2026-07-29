@@ -72,7 +72,7 @@ def test_record_llm_call_increments_both_counters():
 
 
 def test_get_daily_cap_reads_env_override(monkeypatch, tmp_path):
-    monkeypatch.setattr(rl, "_daily_cap", None)
+    monkeypatch.setattr(rl, "_daily_caps", {})
     monkeypatch.setenv("OPENAI_DAILY_CALL_CAP", "7")
     monkeypatch.setenv("OPENAI_DAILY_CAP_FILE", str(tmp_path / "c.json"))
     cap = rl.get_daily_cap()
@@ -82,7 +82,46 @@ def test_get_daily_cap_reads_env_override(monkeypatch, tmp_path):
         cap.record()
     with pytest.raises(HTTPException):
         cap.check()
-    monkeypatch.setattr(rl, "_daily_cap", None)  # 싱글톤 원복
+    monkeypatch.setattr(rl, "_daily_caps", {})  # 싱글톤 원복
+
+
+def test_internal_and_public_caps_are_separate(monkeypatch, tmp_path):
+    """내부(루프백)와 공개 트래픽이 서로 다른 일일 카운터를 쓰는지 — 2026-07-30 예산 분리."""
+    monkeypatch.setattr(rl, "_daily_caps", {})
+    monkeypatch.setenv("OPENAI_DAILY_CALL_CAP", "5")
+    monkeypatch.setenv("OPENAI_DAILY_CAP_FILE", str(tmp_path / "pub.json"))
+    monkeypatch.setenv("INTERNAL_LLM_DAILY_CALL_CAP", "9")
+    monkeypatch.setattr(rl, "_DEFAULT_INTERNAL_CAP_FILE", str(tmp_path / "int.json"))
+    pub, internal = rl.get_daily_cap(), rl.get_daily_cap(internal=True)
+    assert pub is not internal and pub._cap == 5 and internal._cap == 9
+    rl.record_llm_call("127.0.0.1")   # 내부 스코프로 기록
+    rl.record_llm_call("203.0.113.9")  # 공개 스코프로 기록
+    assert internal.current() == 1 and pub.current() == 1
+    monkeypatch.setattr(rl, "_daily_caps", {})
+
+
+def test_rate_limit_llm_soft_signals_instead_of_429(monkeypatch):
+    """step1·step2용 soft 의존성 — 캡 소진 시 429 대신 llm_allowed=False 신호."""
+    req = MagicMock()
+    req.headers = {}
+    req.client = MagicMock(host="203.0.113.9")
+    fake_ipl = MagicMock()
+    fake_ipl.check = MagicMock(return_value="203.0.113.9")
+    fake_cap = MagicMock()
+    fake_cap.exhausted = MagicMock(return_value=True)
+    with patch.object(rl, "get_rate_limiter", return_value=fake_ipl), \
+         patch.object(rl, "get_daily_cap", return_value=fake_cap):
+        ip, llm_allowed = rl.rate_limit_llm_soft(req)
+    assert ip == "203.0.113.9" and llm_allowed is False
+
+
+def test_xff_loopback_spoof_does_not_grant_internal_scope():
+    """외부가 XFF: 127.0.0.1을 실어도 내부 스코프·화이트리스트를 얻지 못한다."""
+    req = MagicMock()
+    req.headers = {"x-forwarded-for": "127.0.0.1, 198.51.100.7"}
+    req.client = MagicMock(host="127.0.0.1")
+    limiter = rl.RateLimiter()
+    assert limiter._get_raw_ip(req) == "198.51.100.7"
 
 
 # ── 전 LLM 경로 배선 (소스 수준) ─────────────────────────────────────────────
@@ -100,7 +139,9 @@ def test_all_llm_routes_import_guard(fname):
 
 def test_filter_step1_step2_have_rate_limit_dependency():
     src = _src("filter.py")
-    # step1·step2 각 함수 시그니처에 Depends(rate_limit_llm)
-    assert len(re.findall(r"Depends\(rate_limit_llm\)", src)) >= 2
+    # step1·step2 각 함수 시그니처에 Depends(rate_limit_llm_soft) — 캡 소진에도 결정론 응답
+    assert len(re.findall(r"Depends\(rate_limit_llm_soft\)", src)) >= 2
     # 캐시 미스 경로에서만 record (캐시 히트는 과금 없음 → 미차감)
     assert src.count("record_llm_call(client_ip)") >= 2
+    # 캡 소진 시 LLM 생략 신호가 두 스텝 모두에 배선
+    assert src.count("LLMBudgetExhausted") >= 3
