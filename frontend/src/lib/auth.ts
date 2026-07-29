@@ -46,6 +46,9 @@ export function captureAuthFromHash(): void {
     email: emailFromJwt(token),
   }
   try { localStorage.setItem(KEY, JSON.stringify(state)) } catch {}
+  // 로그인 직후 1회 토스트용 — 복귀 후 "로그인됐다"는 표시가 없으면 사용자가
+  // 같은 자리 로그아웃 버튼을 다시 눌러 로그인/로그아웃 루프에 빠진다(2026-07-29 실측)
+  try { sessionStorage.setItem('cc_login_toast', '1') } catch {}
   // 해시 라우팅(#home 등)과 충돌하지 않게 토큰 해시 제거
   history.replaceState(null, '', window.location.pathname + window.location.search)
 }
@@ -64,8 +67,12 @@ export function authHeaders(): Record<string, string> {
   return t ? { Authorization: `Bearer ${t}` } : {}
 }
 
-export function login(): void {
-  const redirect = encodeURIComponent(window.location.origin + '/')
+/**
+ * Google 간편 로그인. context를 주면 복귀 후 그 화면으로 돌아간다(?return= 쿼리 —
+ * GoTrue가 redirect_to 뒤에 #access_token을 붙이므로 해시로는 전달 불가).
+ */
+export function login(context?: 'ask' | 'decide'): void {
+  const redirect = encodeURIComponent(window.location.origin + '/' + (context ? `?return=${context}` : ''))
   window.location.href = `${AUTH_BASE}/authorize?provider=google&redirect_to=${redirect}`
 }
 

@@ -303,7 +303,7 @@ function AssistantBubble({
           )}
           {msg.loginRequired && (
             <button
-              onClick={login}
+              onClick={() => login('ask')}
               style={{ display: 'block', marginTop: 10, padding: '8px 16px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: 700 }}
             >
               Google로 로그인

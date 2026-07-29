@@ -39,7 +39,19 @@
   max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 @media (max-width: 720px) {
-  .auth-email { display: none; } /* 좁은 화면은 로그아웃 버튼만 */
+  /* 숨기면 로그인 여부를 알 수 없어 로그인/로그아웃 반복 루프 유발(2026-07-29) — 줄여서라도 표시 */
+  .auth-email { max-width: 88px; }
+}
+/* 로그인 복귀 직후 1회 확인 토스트 — 홈 오버레이(z 1000)보다 위 */
+.auth-toast {
+  position: fixed; top: 68px; left: 50%; transform: translateX(-50%); z-index: 2000;
+  background: #15803d; color: #fff; font-size: var(--text-xs); font-weight: 700;
+  padding: 10px 18px; border-radius: var(--radius-full); box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  white-space: nowrap; animation: auth-toast-in 0.25s ease-out;
+}
+@keyframes auth-toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
 /* top horizontal stepper */
@@ -148,6 +160,9 @@
   .dt-help { padding: 8px; }
   .dt-help span, .dt-help { font-size: 0; }
   .dt-help svg { font-size: initial; }
+  /* 로그인 위젯은 아이콘이 없어 font-size:0이면 빈 원이 된다 — 텍스트 유지 */
+  .auth-btn, .auth-btn span { font-size: var(--text-xs); }
+  .auth-btn { padding: 7px 12px; }
   /* Step1 흰 카드 padding 축소 */
   .dt-content > .bg-white { padding: 16px !important; }
   /* 추가 버튼 행 줄간격 */

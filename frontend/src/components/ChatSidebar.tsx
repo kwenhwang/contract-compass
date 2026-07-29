@@ -174,7 +174,7 @@ export default function ChatSidebar() {
                   {m.streaming && <span className="dt-chat-cursor">▍</span>}
                   {m.loginRequired && (
                     <button
-                      onClick={login}
+                      onClick={() => login('decide')}
                       style={{ display: 'block', marginTop: 8, padding: '6px 12px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: 600 }}
                     >
                       Google로 로그인
