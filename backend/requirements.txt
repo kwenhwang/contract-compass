@@ -6,6 +6,7 @@ openai
 google-genai
 python-multipart
 httpx
+PyJWT  # Google 로그인 게이트 JWT 검증(backend/services/chat_access.py) · MCP 내부 JWT 서명(mcp/server.py)
 sentence-transformers  # 로컬 다국어 임베딩(RAG) — EMBEDDING_ENDPOINT 미설정 시 폴백 경로
 torch  # sentence-transformers 의존
 rank-bm25  # BM25 하이브리드 검색 인덱스
