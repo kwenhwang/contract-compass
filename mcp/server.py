@@ -1,22 +1,45 @@
 """계약나침반 MCP 서버 — 계약방법 결정·법령 검색·계약 Q&A를 MCP 도구로 노출.
 
-에이전트(Codex·Claude 등)가 stdio MCP로 붙어 계약나침반 기능을 직접 호출한다.
-대상 인스턴스는 env `CONTRACT_COMPASS_URL`(기본 https://contract.naru.build).
+에이전트(Codex·Claude 등)가 stdio(로컬) 또는 Streamable HTTP(원격,
+https://contract.naru.build/mcp)로 붙어 계약나침반 기능을 직접 호출한다.
+대상 인스턴스는 env `CONTRACT_COMPASS_URL`(기본 로컬 백엔드 :8402 — CF 왕복과
+ask 로그인 게이트의 엣지 IP 뭉침을 피한다).
 
-실행: python3 mcp/server.py
+실행: python3 mcp/server.py                  # stdio (로컬 검증·codex 등록용)
+      python3 mcp/server.py streamable-http  # 원격 서빙 (systemd contract-mcp.service)
 등록(codex): codex mcp add contract-compass -- python3 /path/to/mcp/server.py
+
+ask 게이트 통과: 백엔드 /ask는 익명 IP당 2회/일 후 로그인을 요구한다(chat_access).
+이 서버는 `SUPABASE_JWT_SECRET`(백엔드와 동일 값)으로 자체 HS256 JWT를 서명해
+로그인 사용자로 통과한다 — 시크릿 미설정이면 익명 폴백(2회/일)으로 동작.
 """
 from __future__ import annotations
 
 import os
+import sys
+import time
 from typing import Any
 
 import httpx
+import jwt as _jwt
 from mcp.server import MCPServer
 
-BASE_URL = os.environ.get("CONTRACT_COMPASS_URL", "https://contract.naru.build").rstrip("/")
+BASE_URL = os.environ.get("CONTRACT_COMPASS_URL", "http://127.0.0.1:8402").rstrip("/")
 API = f"{BASE_URL}/api/v1"
 _TIMEOUT = httpx.Timeout(60.0, connect=10.0)
+
+
+def _ask_headers() -> dict[str, str]:
+    """ask 로그인 게이트(chat_access) 통과용 내부 JWT — 요청마다 서명(exp 5분)."""
+    secret = os.environ.get("SUPABASE_JWT_SECRET")
+    if not secret:
+        return {}
+    now = int(time.time())
+    token = _jwt.encode(
+        {"sub": "contract-mcp", "email": "mcp@internal", "aud": "authenticated",
+         "iat": now, "exp": now + 300},
+        secret, algorithm="HS256")
+    return {"Authorization": f"Bearer {token}"}
 
 server = MCPServer(
     name="contract-compass",
@@ -38,9 +61,9 @@ def _get(path: str, params: dict[str, Any] | None = None) -> Any:
         return r.json()
 
 
-def _post(path: str, body: dict[str, Any]) -> Any:
+def _post(path: str, body: dict[str, Any], headers: dict[str, str] | None = None) -> Any:
     with httpx.Client(timeout=_TIMEOUT) as c:
-        r = c.post(f"{API}{path}", json=body)
+        r = c.post(f"{API}{path}", json=body, headers=headers)
         r.raise_for_status()
         return r.json()
 
@@ -115,7 +138,7 @@ def ask_contract_question(question: str) -> dict:
     Args:
         question: 자연어 질문 (예: "소액수의계약 금액 한도는?")
     """
-    d = _post("/ask", {"question": question})
+    d = _post("/ask", {"question": question}, headers=_ask_headers())
     return {
         "answer": d.get("answer", ""),
         "sources": [
@@ -163,5 +186,30 @@ def get_law_article(ref: str) -> dict:
     return d
 
 
+async def _health(request):  # noqa: ANN001 — Starlette Request
+    """앱+백엔드 도달을 한 번에 판정한다(Kuma·배포 게이트 규약)."""
+    from starlette.responses import JSONResponse
+    try:
+        with httpx.Client(timeout=httpx.Timeout(5.0)) as c:
+            backend = c.get(f"{BASE_URL}/ready").status_code
+    except httpx.HTTPError:
+        backend = 0
+    ok = backend == 200
+    return JSONResponse({"status": "ok" if ok else "degraded", "backend_ready": backend},
+                        status_code=200 if ok else 503)
+
+
+# 외부는 nginx가 /mcp* 만 이 서버로 넘긴다 — /mcp/health가 외부 감시 경로다.
+for _hp in ("/health", "/mcp/health"):
+    server.custom_route(_hp, methods=["GET"], include_in_schema=False)(_health)
+
+
 if __name__ == "__main__":
-    server.run()  # stdio
+    transport = sys.argv[1] if len(sys.argv) > 1 else "stdio"
+    if transport == "streamable-http":
+        server.run("streamable-http",
+                   host="0.0.0.0",
+                   port=int(os.environ.get("MCP_PORT", "8403")),
+                   stateless_http=True)
+    else:
+        server.run()  # stdio — codex 등록·로컬 검증 경로 유지
