@@ -27,8 +27,8 @@ const SPECIALTY_OPTIONS: { value: ConstructionSpecialty; label: string; hint: st
   // 종합공사
   { value: 'general', label: '종합공사', hint: '토목·건축·토목건축·산업환경설비·조경 (4억 기준)', group: '종합' },
   // 법령공사 (별도 법령)
-  { value: 'electrical', label: '전기공사', hint: '전기공사업법 (2억 기준)', group: '법령' },
-  { value: 'ict', label: '정보통신공사', hint: '정보통신공사업법 (2억 기준)', group: '법령' },
+  { value: 'electrical', label: '전기공사', hint: '전기공사업법 (1.6억 기준)', group: '법령' },
+  { value: 'ict', label: '정보통신공사', hint: '정보통신공사업법 (1.6억 기준)', group: '법령' },
   { value: 'fire_safety', label: '소방시설공사', hint: '소방시설공사업법 (1.6억 기준)', group: '법령' },
   { value: 'cultural_heritage', label: '문화재수리', hint: '문화재수리법 (1.6억 기준)', group: '법령' },
   { value: 'other', label: '🔧 기타 법령공사', hint: '예: 환경·소음진동·해체 — 자유 텍스트 입력', group: '법령' },
