@@ -22,3 +22,5 @@ __pycache__/
 .venv/
 *.bak
 *.bak_*
+data/sessions.db-shm
+data/sessions.db-wal
