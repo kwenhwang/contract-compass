@@ -80,6 +80,17 @@ def _keyword_variants(keyword: str) -> list[str]:
     return out
 
 
+def _keyword_tokens(keyword: str) -> list[str]:
+    """다단어 질의를 토큰 목록으로 — 각 토큰은 약어 확장 적용, 1글자 토큰 제외."""
+    abbrev = _abbrev_map()
+    tokens: list[str] = []
+    for t in keyword.split():
+        t = abbrev.get(t, t)
+        if len(t) >= 2 and t not in tokens:
+            tokens.append(t)
+    return tokens
+
+
 def _make_snippet(text: str, q: str, around: int = 80) -> str:
     idx = text.find(q)
     if idx < 0:
@@ -240,6 +251,30 @@ def search_law(q: str = Query(..., min_length=1, max_length=50)) -> list[LawSear
                 if len(results) >= 30:
                     break
             if found_any:
+                break
+
+    # 3. 다단어 AND 폴백 — 위 변형(전체 문구 substring)이 전부 0건일 때,
+    #    토큰 전부를 포함하는 조문 검색. "수의계약 사유"류 자연어 질의 구제.
+    tokens = _keyword_tokens(keyword) if keyword else []
+    if not results and len(tokens) >= 2:
+        r = col.get(
+            where_document={"$and": [{"$contains": t} for t in tokens]},
+            include=["documents", "metadatas"],
+            limit=50,
+        )
+        for doc, meta in zip(r.get("documents") or [], r.get("metadatas") or []):
+            law_ref = meta.get("law_ref") or ""
+            if law_ref in seen_refs:
+                continue
+            seen_refs.add(law_ref)
+            results.append(LawSearchHit(
+                law_name=meta.get("law_name") or "",
+                article=meta.get("article_titles") or "",
+                content=_clean_markers(doc),
+                snippet=_clean_markers(_make_snippet(doc, tokens[0])),
+                law_ref=law_ref,
+            ))
+            if len(results) >= 30:
                 break
 
     return results
