@@ -11,6 +11,7 @@ tools/laws/*.xml
 tools/laws/*.hwpx
 tools/admin_rules/*.xml
 tools/admin_rules/*.jsonl
+tools/admin_rules/*.pdf
 etl/data/
 tests/results/
 
