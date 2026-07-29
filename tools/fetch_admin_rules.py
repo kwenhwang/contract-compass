@@ -40,6 +40,12 @@ TARGETS = [
     {"id": "2100000276694", "name": "용역계약일반조건 (계약예규)", "key": "service_general_conditions"},
     {"id": "2100000276692", "name": "물품구매(제조)계약일반조건 (계약예규)", "key": "product_general_conditions"},
     {"id": "2100000223356", "name": "소프트웨어사업 계약 및 관리감독에 관한 지침", "key": "software_contract_guide"},
+    # 2026-07-30 확장: 조달청 적격심사 세부기준 4종 — 낙찰하한율(입찰가격 평점산식) 질의가
+    # 코퍼스 공백으로 부분·부정확 답변되던 것 보강 (MCP 실질문 QA에서 발견)
+    {"id": "2100000281312", "name": "조달청 시설공사 적격심사세부기준", "key": "ppa_construction_qual"},
+    {"id": "2100000279836", "name": "조달청 물품구매적격심사 세부기준", "key": "ppa_product_qual"},
+    {"id": "2100000279658", "name": "조달청 일반용역 적격심사 세부기준", "key": "ppa_service_qual"},
+    {"id": "2100000279692", "name": "조달청 기술용역 적격심사 세부기준", "key": "ppa_tech_service_qual"},
 ]
 
 print(f"API 키: {OC}")

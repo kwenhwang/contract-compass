@@ -163,6 +163,12 @@ def main() -> int:
         "service_general_conditions",
         "product_general_conditions",
         "software_contract_guide",
+        # 2026-07-30: 조달청 적격심사 세부기준 4종 — 낙찰하한율(공사규모별 별표 구간)
+        # 질의의 코퍼스 공백 보강. ※ 별표 산식 원문은 API 본문에 미포함(첨부 분리).
+        "ppa_construction_qual",
+        "ppa_product_qual",
+        "ppa_service_qual",
+        "ppa_tech_service_qual",
     ]
     for key in parse_keys:
         xml_path = RULES_DIR / f"{key}.xml"

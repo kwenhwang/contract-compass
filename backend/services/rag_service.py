@@ -561,9 +561,13 @@ class RAGService:
             # 예: "수의계약 사유" → 시행령 제26조 (제목에 '수의계약에 의할 수 있는 경우')
             DOMAIN_KEYWORDS = ["수의계약", "적격심사", "협상에 의한 계약", "협상", "제한경쟁",
                                "지명경쟁", "일반경쟁", "낙찰자", "예정가격", "입찰공고",
-                               "부정당업자", "중소기업자간"]
+                               "부정당업자", "중소기업자간", "지역제한"]
             try:
                 triggered = [kw for kw in DOMAIN_KEYWORDS if kw in query]
+                # 법령 간 용어차 동의어 확장 — 지방계약법령은 "지명경쟁입찰" 대신
+                # "지명입찰"을 쓴다(법 제9조·시행령 제22조). 국가 질의어로 지방 조문도 잡히게.
+                if "지명경쟁" in triggered:
+                    triggered.append("지명입찰")
                 if triggered:
                     all_law = law_col.get(include=["documents", "metadatas"])
                     # 국가계약법(시행령·시행규칙) 청크 우선 정렬
@@ -574,6 +578,12 @@ class RAGService:
                         # 실무 절차·한도의 실체는 시행령·시행규칙이므로 이를 최우선.
                         m = item[2] or {}
                         ln = m.get("law_name", "") or ""
+                        # 2026-07-30: 지자체 질문은 지방계약법령이 정답 소스 — 국가계약법이
+                        # 항상 앞서면 지방 시행규칙(지역제한 150억 등)이 슬롯 밖으로 밀렸음.
+                        if is_local_gov_q:
+                            if "지방계약법" in ln and "시행령" in ln: return -3
+                            if "지방계약법" in ln and "시행규칙" in ln: return -2
+                            if "지방계약법" in ln: return -1
                         if "국가계약법" in ln and "시행령" in ln: return 0
                         if "국가계약법" in ln and "시행규칙" in ln: return 1
                         if "국가계약법" in ln: return 2
@@ -609,6 +619,43 @@ class RAGService:
                                 "law_refs": [],
                             })
                             added += 1
+                # 2026-07-30: 지자체 질문은 행안부 예규(「지방자치단체 입찰시 낙찰자
+                # 결정기준」 등, admin_rules 컬렉션)도 대칭 부스팅 — 지방법령 승격이
+                # rerank 상위를 채우면서 예규 정답 청크가 밀려나는 회귀 방지(local-award).
+                if triggered and is_local_gov_q:
+                    ar_col = self._client.get_collection(ADMIN_RULES_COLLECTION,
+                                                         embedding_function=self._ef)
+                    added_ar = 0
+                    for kw in triggered:
+                        if added_ar >= 3:
+                            break
+                        r = ar_col.get(where_document={"$contains": kw},
+                                       include=["documents", "metadatas"], limit=50)
+                        for cid, doc, meta in zip(r.get("ids") or [],
+                                                  r.get("documents") or [],
+                                                  r.get("metadatas") or []):
+                            if added_ar >= 3 or cid in seen:
+                                continue
+                            meta = meta or {}
+                            name = " ".join(str(meta.get(k) or "") for k in
+                                            ("law_name", "rule_name", "source"))
+                            if "지방자치단체" not in name:
+                                continue
+                            seen[cid] = 0.95
+                            all_chunks.append({
+                                "chunk_id": cid,
+                                "document_id": name.strip() or ADMIN_RULES_COLLECTION,
+                                "section_title": meta.get("section_title", "") or name.strip(),
+                                "chunk_type": "admin_rule",
+                                "chunk_level": meta.get("chunk_level", "single"),
+                                "content": doc[:1200],
+                                "relevance_score": 0.95,
+                                "contract_type": "law",
+                                "source_type": "admin_rule",
+                                "matched_via": "keyword",
+                                "law_refs": [],
+                            })
+                            added_ar += 1
             except Exception:
                 pass
 
