@@ -182,7 +182,7 @@ def get_article(ref: str = Query(..., min_length=2, max_length=100)):
 
 
 @router.get("/search", response_model=list[LawSearchHit])
-def search_law(q: str = Query(..., min_length=1, max_length=50)) -> list[LawSearchHit]:
+def search_law(q: str = Query(..., min_length=1, max_length=200)) -> list[LawSearchHit]:
     """법령 키워드 또는 조문번호로 조문 검색.
 
     - "제26조" → 모든 법령의 제26조 반환
@@ -253,28 +253,64 @@ def search_law(q: str = Query(..., min_length=1, max_length=50)) -> list[LawSear
             if found_any:
                 break
 
-    # 3. 다단어 AND 폴백 — 위 변형(전체 문구 substring)이 전부 0건일 때,
-    #    토큰 전부를 포함하는 조문 검색. "수의계약 사유"류 자연어 질의 구제.
+    # 3. 다단어 부분 매치 폴백 — 위 변형(전체 문구 substring)이 전부 0건일 때,
+    #    토큰별 substring 검색 후 매치 토큰 수로 순위. AND-전체는 토큰 하나만 코퍼스에
+    #    없어도("낙찰하한율"류 예규 용어) 0건이 되므로, 2개 이상 매치를 통과선으로 한다.
     tokens = _keyword_tokens(keyword) if keyword else []
     if not results and len(tokens) >= 2:
-        r = col.get(
-            where_document={"$and": [{"$contains": t} for t in tokens]},
-            include=["documents", "metadatas"],
-            limit=50,
+        by_ref: dict[str, tuple[int, str, dict]] = {}  # ref → (매치수, doc, meta)
+        for t in tokens[:6]:
+            r = col.get(
+                where_document={"$contains": t},
+                include=["documents", "metadatas"],
+                limit=100,
+            )
+            for doc, meta in zip(r.get("documents") or [], r.get("metadatas") or []):
+                ref = meta.get("law_ref") or ""
+                cnt = by_ref[ref][0] + 1 if ref in by_ref else 1
+                by_ref[ref] = (cnt, doc, meta)
+        ranked = sorted(
+            ((cnt, doc, meta) for cnt, doc, meta in by_ref.values() if cnt >= 2),
+            key=lambda x: -x[0],
         )
-        for doc, meta in zip(r.get("documents") or [], r.get("metadatas") or []):
+        for cnt, doc, meta in ranked:
             law_ref = meta.get("law_ref") or ""
             if law_ref in seen_refs:
                 continue
             seen_refs.add(law_ref)
+            hit_token = next((t for t in tokens if t in doc), tokens[0])
             results.append(LawSearchHit(
                 law_name=meta.get("law_name") or "",
                 article=meta.get("article_titles") or "",
                 content=_clean_markers(doc),
-                snippet=_clean_markers(_make_snippet(doc, tokens[0])),
+                snippet=_clean_markers(_make_snippet(doc, hit_token)),
                 law_ref=law_ref,
             ))
             if len(results) >= 30:
                 break
+
+    # 4. 시맨틱 폴백 (Gemini 임베딩) — substring이 전혀 안 걸리는 자연어 질의 구제.
+    #    임베딩 호출 실패(쿼터 등)는 조용히 빈 결과 유지(검색 기능 자체는 죽이지 않음).
+    if not results and keyword:
+        try:
+            qr = col.query(
+                query_texts=[keyword], n_results=8,
+                include=["documents", "metadatas"],
+            )
+            for doc, meta in zip((qr.get("documents") or [[]])[0],
+                                 (qr.get("metadatas") or [[]])[0]):
+                law_ref = meta.get("law_ref") or ""
+                if law_ref in seen_refs:
+                    continue
+                seen_refs.add(law_ref)
+                results.append(LawSearchHit(
+                    law_name=meta.get("law_name") or "",
+                    article=meta.get("article_titles") or "",
+                    content=_clean_markers(doc),
+                    snippet=_clean_markers(_make_snippet(doc, keyword)),
+                    law_ref=law_ref,
+                ))
+        except Exception:  # noqa: BLE001 — 임베딩 장애 시 키워드 결과만으로 동작
+            pass
 
     return results

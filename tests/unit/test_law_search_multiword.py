@@ -25,15 +25,21 @@ def test_keyword_tokens_split_and_expand():
 
 
 class _FakeCol:
-    """전체 문구 $contains는 0건, 토큰 $and는 1건 반환하는 가짜 컬렉션."""
+    """전체 문구 substring은 0건, 토큰별 $contains만 매치되는 가짜 컬렉션.
+
+    2026-07-30: AND-전체 → 토큰별 부분 매치(2개 이상) 순위 방식으로 바뀜에 따라
+    단일 $contains 질의에 응답한다. query()(시맨틱 폴백)는 없음 — 호출 시
+    AttributeError가 나고 search_law가 삼켜 빈 결과 유지(의도된 degrade).
+    """
 
     DOC = "국가계약법 시행령 제26조\n수의계약에 의할 수 있는 사유는 다음과 같다."
     META = {"law_name": "국가계약법 시행령", "article_titles": "제26조", "law_ref": "국가계약법 시행령 제26조"}
 
     def get(self, where=None, where_document=None, include=None, limit=None):
-        if where_document and "$and" in where_document:
-            terms = [c["$contains"] for c in where_document["$and"]]
-            if all(t in self.DOC for t in terms):
+        if where_document and "$contains" in where_document:
+            term = where_document["$contains"]
+            # 전체 문구("수의계약 사유" 그대로)는 DOC에 없어 0건 — 폴백 경로 강제
+            if term in self.DOC:
                 return {"documents": [self.DOC], "metadatas": [self.META]}
         return {"documents": [], "metadatas": []}
 
@@ -43,11 +49,19 @@ def test_multiword_and_fallback(monkeypatch):
     hits = law.search_law(q="수의계약 사유")
     assert len(hits) == 1
     assert hits[0].law_ref == "국가계약법 시행령 제26조"
-    # 매치 실패 토큰이면 여전히 0건 (AND 의미 보존)
+    # 2개 미만 매치는 통과선 미달 → 0건 (시맨틱 폴백은 fake col에 없어 degrade)
     assert law.search_law(q="수의계약 낙찰하한율") == []
 
 
-def test_single_keyword_path_unchanged(monkeypatch):
-    """단일 키워드는 AND 폴백을 타지 않는다 (기존 변형 경로 결과 그대로)."""
+def test_partial_match_survives_missing_token(monkeypatch):
+    """토큰 하나가 코퍼스에 아예 없어도(예규 용어 등) 2개 이상 매치면 회수 — 2026-07-30."""
     monkeypatch.setattr(law, "_get_collection", lambda: _FakeCol())
-    assert law.search_law(q="수의계약") == []  # fake col의 substring 경로는 항상 0건
+    hits = law.search_law(q="수의계약 사유 낙찰하한율")
+    assert len(hits) == 1 and hits[0].law_ref == "국가계약법 시행령 제26조"
+
+
+def test_single_keyword_path_unchanged(monkeypatch):
+    """단일 키워드는 부분 매치 폴백을 타지 않는다 (변형 substring 경로 결과 그대로)."""
+    monkeypatch.setattr(law, "_get_collection", lambda: _FakeCol())
+    assert law.search_law(q="수의계약")[0].law_ref == "국가계약법 시행령 제26조"  # substring 직접 매치
+    assert law.search_law(q="입찰보증금") == []  # 미매치 단일 토큰은 폴백 없이 0건
