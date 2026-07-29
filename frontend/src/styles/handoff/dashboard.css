@@ -1,0 +1,110 @@
+/* ============================================================
+   홈/대시보드 + 멀티테넌트(SaaS) 전용 컴포넌트
+   system.css 토큰 기반 — 액션색은 항상 브랜드 오렌지(테넌트 불변)
+   테넌트 정체성은 로고+이름+작은 액센트 칩으로만 표현
+   ============================================================ */
+
+.app{background:var(--paper);min-height:100%}
+
+/* ----- 글로벌 상단바 ----- */
+.topbar{display:flex;align-items:center;gap:18px;padding:13px 24px;background:var(--surface);border-bottom:1px solid var(--line)}
+.tb-logo{display:flex;align-items:center;gap:11px}
+.tb-logo .g{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;flex:none;background:linear-gradient(150deg,var(--brand-hover),var(--brand-press));box-shadow:0 8px 16px -8px rgba(232,89,12,.6)}
+.tb-logo .tt{font-size:15px;font-weight:800;letter-spacing:-.01em;line-height:1.1}
+.tb-logo .ts{font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
+
+/* 기관 전환기 (tenant switcher) */
+.tenant{display:flex;align-items:center;gap:10px;margin-left:8px;padding:7px 12px 7px 8px;border:1px solid var(--line-2);border-radius:var(--r-pill);background:var(--surface);cursor:pointer}
+.tenant:hover{border-color:var(--line-strong);background:var(--surface-2)}
+.tenant .tlogo{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;font-family:var(--mono);font-weight:800;font-size:12px;color:#fff;flex:none;background:var(--tenant,#2563C9)}
+.tenant .tname{font-size:13.5px;font-weight:700;color:var(--ink);line-height:1.15;white-space:nowrap}
+.tenant .ttype{font-size:10.5px;color:var(--ink-3);font-family:var(--mono)}
+.tenant .tchev{color:var(--ink-3);margin-left:2px}
+
+.tb-search{margin-left:14px;flex:1;max-width:360px;display:flex;align-items:center;gap:9px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-pill);padding:9px 15px;color:var(--ink-3);font-size:13px}
+.tb-right{margin-left:auto;display:flex;align-items:center;gap:14px}
+.tb-icon{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--line);position:relative}
+.tb-icon .dot{position:absolute;top:8px;right:9px;width:7px;height:7px;border-radius:50%;background:var(--high);border:1.5px solid var(--surface)}
+.tb-user{display:flex;align-items:center;gap:10px;padding-left:14px;border-left:1px solid var(--line)}
+.tb-user .av{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:14px;color:#fff;background:var(--ink-2);flex:none}
+.tb-user .un{font-size:13.5px;font-weight:700;line-height:1.2}
+.tb-user .ur{font-size:11.5px;color:var(--ink-3);font-family:var(--mono)}
+
+/* ----- 대시보드 본문 ----- */
+.dash{max-width:1120px;margin:0 auto;padding:34px 28px 56px}
+.dash-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.dash-hero .greet{font-size:26px;font-weight:800;letter-spacing:-.02em}
+.dash-hero .greet b{color:var(--brand-ink)}
+.dash-hero .subg{font-size:14px;color:var(--ink-2);margin-top:7px}
+.scope-pill{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:var(--ink-2);background:var(--surface);border:1px solid var(--line);border-radius:var(--r-pill);padding:8px 14px}
+.scope-pill .sc-dot{width:9px;height:9px;border-radius:50%;background:var(--tenant,#2563C9)}
+
+/* 역할 진입 카드 */
+.entry-cards{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:26px}
+.entry{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-xl);padding:28px;box-shadow:var(--sh-2);overflow:hidden;display:flex;flex-direction:column;min-height:212px}
+.entry .ehead{display:flex;align-items:center;gap:13px}
+.entry .eico{width:48px;height:48px;border-radius:13px;display:grid;place-items:center;flex:none}
+.entry .eico-dec{background:var(--brand-tint);color:var(--brand-ink)}
+.entry .eico-aud{background:var(--violet-tint);color:var(--violet-ink)}
+.entry h3{font-size:19px;font-weight:800;letter-spacing:-.01em}
+.entry .ewho{font-size:12px;color:var(--ink-3);font-family:var(--mono);font-weight:600;margin-top:3px}
+.entry p{font-size:13.5px;color:var(--ink-2);line-height:1.55;margin-top:14px;flex:1}
+.entry .ecta{margin-top:18px;display:flex;align-items:center;gap:10px}
+.entry .emini{display:flex;gap:18px;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+.entry .emini .mi{display:flex;flex-direction:column;gap:2px}
+.entry .emini .miv{font-family:var(--mono);font-size:20px;font-weight:800;letter-spacing:-.01em}
+.entry .emini .mik{font-size:11px;color:var(--ink-3);font-weight:600}
+/* 권한 없는 카드 */
+.entry.locked{background:var(--surface-2);box-shadow:none}
+.entry.locked .eico{background:var(--surface-3);color:var(--ink-4)}
+.entry.locked h3,.entry.locked p{color:var(--ink-3)}
+.entry .lockbadge{position:absolute;top:18px;right:18px;display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:var(--ink-3);background:var(--surface);border:1px solid var(--line);border-radius:var(--r-pill);padding:5px 11px}
+
+/* primary 강조 카드 (역할 기본 진입) */
+.entry.primary{border-color:var(--brand-tint-2)}
+.entry.primary::after{content:"";position:absolute;top:0;left:0;right:0;height:4px;background:var(--brand)}
+.entry .defbadge{position:absolute;top:18px;right:18px;font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--brand-ink);background:var(--brand-tint);border-radius:var(--r-pill);padding:5px 11px}
+
+/* 하단 위젯 */
+.dash-grid{display:grid;grid-template-columns:1.5fr 1fr;gap:18px;margin-top:18px}
+.widget{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--sh-1);overflow:hidden}
+.widget-h{display:flex;align-items:center;justify-content:space-between;padding:15px 20px;border-bottom:1px solid var(--line)}
+.widget-h .wt{font-size:14px;font-weight:800}
+.widget-h .wl{font-size:12.5px;color:var(--brand-ink);font-weight:700}
+.widget-b{padding:8px 20px 14px}
+.wrow{display:grid;grid-template-columns:auto 1fr auto;gap:13px;align-items:center;padding:13px 0}
+.wrow + .wrow{border-top:1px solid var(--line)}
+.wrow .wicon{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;flex:none}
+.wrow .wmain{font-size:13.5px;font-weight:700;line-height:1.3}
+.wrow .wmeta{font-size:11.5px;color:var(--ink-3);font-family:var(--mono);margin-top:3px}
+.wrow .wstat{font-size:12px;font-weight:700}
+
+/* 기관별 스코프 데이터 안내 띠 */
+.scope-note{display:flex;align-items:center;gap:10px;margin-top:18px;padding:12px 16px;background:var(--info-tint);border:1px solid #CFDDF6;border-radius:var(--r-md);font-size:12.5px;color:var(--info-ink);line-height:1.5}
+.scope-note svg{flex:none}
+
+/* 테넌트 드롭다운(열린 상태 데모) */
+.tdrop{position:absolute;z-index:20;background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r-md);box-shadow:var(--sh-pop);padding:7px;width:300px}
+.tdrop .th{font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;font-family:var(--mono);padding:8px 10px 6px}
+.tdrop-item{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:9px;cursor:pointer}
+.tdrop-item:hover{background:var(--surface-2)}
+.tdrop-item.on{background:var(--brand-tint)}
+.tdrop-item .tl{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;font-family:var(--mono);font-weight:800;font-size:12px;color:#fff;flex:none}
+.tdrop-item .tn{font-size:13.5px;font-weight:700;line-height:1.2}
+.tdrop-item .tm{font-size:11px;color:var(--ink-3);font-family:var(--mono)}
+.tdrop-item .tcheck{margin-left:auto;color:var(--brand)}
+.tdrop-foot{border-top:1px solid var(--line);margin-top:5px;padding:9px 10px 4px}
+.tdrop-foot a{font-size:12.5px;color:var(--ink-2);font-weight:600;display:flex;align-items:center;gap:7px}
+
+@media (max-width:980px){
+  .entry-cards,.dash-grid{grid-template-columns:1fr}
+}
+/* 모바일: 상단바가 한 줄에 넘쳐 가로 스크롤을 유발 → 검색은 숨기고 나머지는 줄바꿈 허용 */
+@media (max-width:720px){
+  .topbar{flex-wrap:wrap;gap:10px 12px;padding:12px 16px}
+  .tb-search{display:none}
+  .tenant{margin-left:0}
+  .tb-right{margin-left:auto}
+  .tb-logo .tt{font-size:14px}
+  .tenant .tname{white-space:normal}
+}

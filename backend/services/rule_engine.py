@@ -1,0 +1,307 @@
+"""contract_rules.json 기반 결정론적 계약방법 필터."""
+import json
+from pathlib import Path
+from typing import Any
+
+
+class RuleEngine:
+    def __init__(self, rules_path: str):
+        self._path = Path(rules_path)
+        self._data: dict = {}
+        self.reload()
+
+    def reload(self):
+        with open(self._path, encoding="utf-8") as f:
+            self._data = json.load(f)
+
+    @property
+    def thresholds(self) -> dict:
+        return self._data.get("thresholds", {})
+
+    def match(self, params: dict, org_type: str = "public_corp") -> list[dict]:
+        """입력 파라미터에 맞는 규칙을 우선순위 순으로 반환.
+
+        org_type: 시행 주체(public_corp/national/local). 규칙에 선택적 `org_type` 필드가
+        있으면 해당 기관에만 매칭, 없으면(현행 룰) 전 기관 공통 → **후방호환**(기본 public_corp).
+        """
+        matched = []
+        input_ct = params.get("contract_type", "")
+        for rule in self._data.get("rules", []):
+            # 기관유형 필터: 규칙 org_type 지정 시 해당 기관만(미지정=공통)
+            rule_org = rule.get("org_type")
+            if rule_org and rule_org != org_type:
+                continue
+            # 계약유형이 다른 규칙은 제외 (public_procurement는 모든 유형에 적용 가능)
+            rule_ct = rule.get("contract_type", "")
+            if rule_ct != "public_procurement" and input_ct and rule_ct != input_ct:
+                continue
+            if self._check_conditions(rule.get("conditions", {}), params):
+                matched.append(rule)
+        # priority 값이 낮을수록 더 구체적인 규칙 (높은 우선순위)
+        matched.sort(key=lambda r: r.get("priority", 999))
+        return matched
+
+    def _check_conditions(self, conditions: dict, params: dict) -> bool:
+        price = params.get("estimated_price", 0)
+        ct = params.get("contract_type", "")
+
+        for key, val in conditions.items():
+            if key == "estimated_price_gte" and price < val:
+                return False
+            elif key == "estimated_price_lt" and price >= val:
+                return False
+            # '이하' 경계 (2026-07-16): 수의계약 상한은 법령상
+            # '이하'(lte)인데 lt만 지원해 경계 정확값이 배제되던 문제 정정
+            elif key == "estimated_price_lte" and price > val:
+                return False
+            elif key == "contract_type" and ct != val:
+                return False
+            elif key == "is_sme_competition_product":
+                if params.get("is_sme_competition_product", False) != val:
+                    return False
+            elif key == "is_sme_mandatory":
+                if params.get("is_sme_mandatory", False) != val:
+                    return False
+            elif key == "regional_restriction":
+                if params.get("regional_restriction", False) != val:
+                    return False
+            elif key == "performance_restriction":
+                if params.get("performance_restriction", False) != val:
+                    return False
+            elif key == "sme_restriction":
+                if params.get("sme_restriction", False) != val:
+                    return False
+            elif key == "small_enterprise_restriction":
+                if params.get("small_enterprise_restriction", False) != val:
+                    return False
+            elif key == "is_simple_labor":
+                if params.get("is_simple_labor", False) != val:
+                    return False
+            elif key == "negotiation_contract":
+                if params.get("negotiation_contract", False) != val:
+                    return False
+            elif key == "pq_required":
+                if params.get("pq_required", False) != val:
+                    return False
+            elif key == "is_technical_service":
+                if params.get("is_technical_service", False) != val:
+                    return False
+            elif key == "is_sme_product":
+                if params.get("is_sme_product", False) != val:
+                    return False
+            elif key == "is_women_enterprise":
+                if params.get("is_women_enterprise", False) != val:
+                    return False
+            elif key == "is_social_enterprise":
+                if params.get("is_social_enterprise", False) != val:
+                    return False
+            elif key == "is_tech_developed_product":
+                if params.get("is_tech_developed_product", False) != val:
+                    return False
+            elif key == "service_type":
+                if params.get("service_type") != val:
+                    return False
+            elif key == "negotiation_reason":
+                if params.get("negotiation_reason") != val:
+                    return False
+            elif key == "construction_specialty":
+                # F20-C1 (2026-06-10): 건설산업기본법 시행령 별표1 전문 14개 → "electrical" 그룹 매칭.
+                # 14개 모두 전문공사로 PDF 기준 2억 임계값 동일. 룰은 CST_ELEC_* 재사용.
+                # 법령공사 그룹(other 포함)은 fire_safety/cultural_heritage 룰 재사용.
+                p_spec = params.get("construction_specialty")
+                PRO_GROUP = {"electrical", "ict", "ground_paving", "interior",
+                             "metal_window_roof", "painting_waterproof", "landscape",
+                             "steel_structure", "underwater_dredging", "elevator",
+                             "mechanical", "gas_heating", "water_sewer",
+                             "boring_grouting", "railway", "facility_maintenance"}
+                LEGAL_GROUP = {"fire_safety", "cultural_heritage", "other"}
+                if p_spec == val:
+                    pass  # 정확 일치
+                elif val == "electrical" and p_spec in PRO_GROUP:
+                    pass  # 전문공사 14개는 electrical 룰에 매칭
+                elif val == "fire_safety" and p_spec in LEGAL_GROUP:
+                    pass  # 법령공사는 fire_safety 룰에 매칭
+                else:
+                    return False
+            elif key == "product_category":  # F13-4
+                if params.get("product_category") != val:
+                    return False
+            elif key == "joint_contract_kind":  # F13-2
+                if params.get("joint_contract_kind") != val:
+                    return False
+            elif key == "prior_bid_count_gte":
+                if params.get("prior_bid_count", 0) < val:
+                    return False
+        return True
+
+    def get_pass_score(self, rule: dict, price: int) -> dict[str, Any]:
+        """규칙에서 금액별 적격심사 점수 및 낙찰하한율 계산.
+
+        pass_score_by_amount 키 형식: "gte_<정수>" — 값이 큰 구간부터 매칭.
+        """
+        result = rule.get("result", {})
+        pass_score_map = result.get("pass_score_by_amount")
+
+        if pass_score_map:
+            # 키("gte_N")를 숫자로 파싱, 내림차순 정렬
+            tiers = sorted(
+                ((int(k.split("_", 1)[1]), v) for k, v in pass_score_map.items()),
+                reverse=True,
+            )
+            for threshold, score_info in tiers:
+                if price >= threshold:
+                    return score_info
+            # 모든 구간 미만이면 마지막(최소) 구간 반환
+            return tiers[-1][1] if tiers else {}
+
+        return {
+            "pass_score": result.get("pass_score"),
+            "lower_limit_rate": result.get("lower_limit_rate"),
+        }
+
+    def get_public_procurement_obligations(self, contract_type: str) -> list[dict]:
+        """해당 계약유형의 공공구매 의무 목록 반환."""
+        obligations_path = self._path.parent / "public_procurement_obligations.json"
+        if not obligations_path.exists():
+            return []
+        with open(obligations_path, encoding="utf-8") as f:
+            data = json.load(f)
+        result = []
+        for ob in data.get("obligations", []):
+            scope = ob.get("scope", [])
+            if contract_type in scope or not scope:
+                result.append(ob)
+        return result
+
+    def restriction_options(self, contract_type: str, price: int,
+                            construction_specialty: str | None = None,
+                            org_type: str = "public_corp") -> list[dict]:
+        """제한경쟁 가능 항목을 금액 기준으로 결정론적 판정.
+        각 항목에 정확한 법령 근거 부여(LLM 환각 방지). NextStepQuestion 형식 dict 반환.
+        근거: 국가계약법 시행령 제21조·판로지원법 시행령·공기업준정부기관 계약사무규칙.
+        ※ 지방자치단체(org_type="local")는 지방계약법령·행안부 예규 기준이 일부 달라
+        해당 항목에 확인 안내를 덧붙인다(미확인 값 단정 금지 원칙)."""
+        local_note = (" ※ 지방자치단체는 지방계약법령 기준(한도·절차)이 다를 수 있으니 "
+                      "소속 지자체 계약 부서 기준을 확인하세요." if org_type == "local" else "")
+        th = self.thresholds
+        notice = th.get("announcement_limit", 230_000_000)        # 고시금액 2.3억
+        small = th.get("sme_small_enterprise_upper", 100_000_000)  # 1억
+        opts: list[dict] = []
+
+        def q(qid, text, desc, if_yes, sub_options=None):
+            d = {"id": qid, "text": text, "description": desc, "if_yes": if_yes, "type": "boolean"}
+            if sub_options:
+                d["sub_options"] = sub_options
+            return d
+
+        if contract_type == "construction":
+            # general=종합공사로 간주(전기·정보통신·소방 등은 전문). #21에서 정식 분리 예정
+            is_general = construction_specialty in (None, "", "general")
+            kind = "종합공사" if is_general else "전문공사"
+            region_limit = 15_000_000_000 if is_general else 1_000_000_000   # 150억 / 10억
+            perf_limit = 3_000_000_000 if is_general else 300_000_000        # 30억 / 3억
+            region_basis = ("공기업·준정부기관 계약사무규칙 제6조 제4항 (150억원 미만 건설공사)"
+                            if is_general else "국가계약법 시행령 제21조 제1항 제6호")
+            # [선택] 지역제한 — 종합 150억·전문 10억 미만. 법령상 선택 사항이나
+            # 기관 내규로 의무화한 곳이 많아 내규 확인 안내를 덧붙인다.
+            if price < region_limit:
+                opts.append(q(
+                    "regional_restriction",
+                    "우리 지역(시·도) 업체로 제한하시겠습니까? [선택]",
+                    f"추정가격 {region_limit // 100_000_000}억원 미만 {kind}는 지역제한 경쟁 가능. "
+                    f"근거: {region_basis}. 법령상 선택 사항이나 기관 내규로 의무 적용인 경우가 "
+                    f"있으니 소속 기관 계약 규정을 확인하세요.{local_note}",
+                    "지역제한 경쟁입찰로 전환됩니다.",
+                ))
+            # [선택] 실적제한
+            if price >= perf_limit:
+                opts.append(q(
+                    "performance_restriction",
+                    f"시공 실적 보유 업체로 제한하시겠습니까? [선택]",
+                    f"추정가격 {perf_limit // 100_000_000}억원 이상 {kind}는 실적제한 가능. "
+                    f"근거: 국가계약법 시행령 제21조 제1항 제1호{local_note}",
+                    "실적제한 경쟁입찰이 적용됩니다.",
+                ))
+                # F20-C2 (2026-06-10): 공사 시공능력 제한 (사용자 의견 — 실적제한과 별개 옵션)
+                opts.append(q(
+                    "construction_capability_restriction",
+                    f"시공능력평가액으로 제한하시겠습니까? [선택]",
+                    f"직전 사업년도 시공능력평가액(추정가의 1배 이상)을 기준으로 입찰참가 제한. "
+                    f"실적제한과 다른 제한 방식 — 국가계약법 시행령 제21조(제한경쟁입찰) 참조. 자유 텍스트 입력 가능.",
+                    "시공능력 제한이 적용됩니다 (자격요건에 명시 — 추천 문구 3종 선택 가능).",
+                ))
+        else:
+            kind = "용역" if contract_type == "service" else "물품"
+            # [필수] 중소기업자간 경쟁 / 소기업·소상공인
+            if price < notice:
+                opts.append(q(
+                    "sme_restriction",
+                    "중소기업만 입찰하도록 제한하시겠습니까? [필수 검토]",
+                    f"추정가격이 고시금액(2.3억원) 미만인 {kind}은 중소기업자간 경쟁이 원칙입니다. "
+                    f"근거: 판로지원법 시행령 제2조의2 (단, 기술용역·폐기물용역 등은 예외 — 시행령 제2조의3)",
+                    "중소기업자간 경쟁입찰로 제한됩니다.",
+                ))
+            if price < small:
+                opts.append(q(
+                    "small_enterprise_restriction",
+                    "소기업·소상공인으로 제한하시겠습니까? [필수 검토]",
+                    "추정가격 1억원 미만은 소기업·소상공인 제한 대상입니다. 근거: 판로지원법 시행령 제2조의2",
+                    "소기업·소상공인 제한경쟁이 적용됩니다.",
+                ))
+            # [선택] 실적제한(고시금액 이상) / 지역제한(고시금액 미만)
+            if price >= notice:
+                opts.append(q(
+                    "performance_restriction",
+                    "실적 보유 업체로 제한하시겠습니까? [선택]",
+                    f"추정가격 고시금액(2.3억원) 이상 {kind}은 실적제한 가능. 근거: 국가계약법 시행령 제21조 제1항 제1호",
+                    "실적제한 경쟁입찰이 적용됩니다.",
+                ))
+            else:
+                opts.append(q(
+                    "regional_restriction",
+                    "우리 지역(시·도) 업체로 제한하시겠습니까? [선택]",
+                    f"추정가격 고시금액(2.3억원) 미만 {kind}은 지역제한 가능. 근거: 국가계약법 시행령 제21조 제1항 제6호",
+                    "지역제한 경쟁입찰로 전환됩니다.",
+                ))
+        # 2026-06-05 F9-3 / 2026-06-09 F13-2: 공동도급 4가지 세부 옵션 + 법령 클릭
+        # F28-B (2026-06-10): 공사계약에 지역의무공동도급 옵션 추가 (사용자 의견 반영).
+        # 근거: 시행령 제72조 제3~4항.
+        # 적용 범위: 종합공사 88억 ≤ price < 265억 / 전문공사 10억 ≤ price < 265억
+        joint_subopts = [
+            {"value": "co_exec_only", "label": "공동이행만 허용",
+             "desc": "공동수급체 구성원이 공동으로 시공·인력 투입 — 공동연대책임",
+             "law": "공동계약운영요령 제7조"},
+            {"value": "div_exec_only", "label": "분담이행만 허용",
+             "desc": "공동수급체 구성원이 분담된 공종을 각자 시공 — 분담연대책임",
+             "law": "공동계약운영요령 제11조"},
+            {"value": "both_allowed", "label": "공동·분담 자율 선택",
+             "desc": "입찰자가 공동이행 또는 분담이행 자율 선택 가능 (가장 흔함)",
+             "law": "공동계약운영요령 제5조"},
+            {"value": "none", "label": "공동도급 미허용 (단독)",
+             "desc": "단독 입찰자만 가능 — 사유 명시 필요 (발주기관이 공동계약 허용 여부 결정)",
+             "law": "계약예규 「공동계약운영요령」"},
+        ]
+        if contract_type == "construction":
+            is_general = construction_specialty in (None, "", "general")
+            regional_lo = 8_800_000_000 if is_general else 1_000_000_000   # 종합 88억 / 전문 10억
+            regional_hi = 26_500_000_000                                    # 고시금액② 265억
+            if regional_lo <= price < regional_hi:
+                joint_subopts.insert(0, {
+                    "value": "regional_mandatory",
+                    "label": "🏢 지역의무공동도급 (지역업체 1인 이상 의무)",
+                    "desc": (
+                        f"추정가격 {regional_lo // 100_000_000}억~{regional_hi // 100_000_000}억 미만 "
+                        f"{'종합' if is_general else '전문/법령'}공사는 지역의무공동도급 적용 — "
+                        "해당 지역업체 1인 이상이 공동수급체 구성원이어야 함. "
+                        "단, 자격보유자가 10인 미만이면 예외."
+                    ),
+                    "law": "국가계약법 시행령 제72조 제3~4항",
+                })
+        opts.append(q(
+            "joint_contract",
+            "공동도급으로 발주하시겠습니까? [선택]",
+            "공동도급은 2개 이상 업체가 공동수급체를 구성해 입찰. 근거: 계약예규 「공동계약운영요령」 (기획재정부 계약예규)",
+            "공동계약이 적용됩니다.",
+            sub_options=joint_subopts,
+        ))
+        return opts

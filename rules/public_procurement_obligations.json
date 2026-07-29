@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "obligations": [
+    { "category": "중소기업제품", "mandatory_ratio": 0.50, "scope": ["service", "product", "construction"], "legal_basis": "중소기업제품 구매촉진 및 판로지원에 관한 법률 제4조" },
+    { "category": "기술개발제품", "mandatory_ratio": 0.08, "scope": ["product"], "legal_basis": "중소기업제품 구매촉진 및 판로지원에 관한 법률 제14조" },
+    { "category": "여성기업제품", "mandatory_ratio": 0.05, "scope": ["service", "product"], "legal_basis": "여성기업 지원에 관한 법률 제9조" },
+    { "category": "사회적기업", "mandatory_ratio": 0.03, "scope": ["service", "product"], "legal_basis": "사회적기업 육성법 제12조" },
+    { "category": "장애인기업", "mandatory_ratio": 0.01, "scope": ["service", "product"], "legal_basis": "장애인기업활동 촉진법" },
+    { "category": "소상공인", "mandatory_ratio": 0.01, "scope": ["service", "product", "construction"], "legal_basis": "소상공인 보호 및 지원에 관한 법률" }
+  ]
+}

@@ -1,0 +1,40 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  cleanroom-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 클린룸 스캔 게이트
+        run: bash scripts/scan_confidential.sh
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 경량 의존성 설치 (룰엔진·모델 테스트용)
+        run: pip install fastapi pydantic-settings pytest httpx
+      - name: 룰 회귀셋 (LLM·chroma 불필요)
+        run: |
+          python -m pytest tests/unit/test_public_scenarios.py tests/unit/test_determinism.py \
+            tests/unit/test_law_registry_integrity.py tests/unit/test_legal_basis_resolution.py -q
+      - name: 룰 스키마 감사
+        run: python tools/audit_rule_schema.py
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: cd frontend && npm ci && npm run build

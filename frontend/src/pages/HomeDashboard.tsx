@@ -1,0 +1,104 @@
+// 홈/대시보드 — 계약나침반 진입 화면 (dashboard.css 클래스 사용).
+// 진입: /#home (또는 해시 없음). 카드 → 계약방법 결정 위저드 / 계약 Q&A / 용어사전 / 룰 결정트리.
+
+export default function HomeDashboard({ onDecision, onAsk, onGlossary, onRuleTree }: {
+  onDecision: () => void; onAsk: () => void; onGlossary: () => void; onRuleTree: () => void
+}) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, overflow: 'auto' }}>
+      <div className="app">
+        {/* 상단바 */}
+        <div className="topbar">
+          <div className="tb-logo">
+            <span className="g">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v3M5.5 7l3.2 6M18.5 7l-3.2 6" /><path d="M3 13h7M14 13h7" /><path d="M9 20h6M12 6v14" /></svg>
+            </span>
+            <span><span className="tt">계약나침반</span><br /><span className="ts">공공계약 방법 결정 도우미</span></span>
+          </div>
+          <div className="tb-right" style={{ marginLeft: 'auto' }} />
+        </div>
+
+        {/* 본문 */}
+        <div className="dash">
+          <div className="dash-hero">
+            <div>
+              <div className="greet"><b>계약나침반</b> — 공공계약 방법 결정 도우미</div>
+              <div className="subg">사업명·금액만 입력하면 법령 기준 계약방법을 결정론 룰엔진이 안내합니다.</div>
+            </div>
+          </div>
+
+          <div className="entry-cards">
+            {/* 계약방법 결정 위저드 */}
+            <div className="entry primary">
+              <span className="defbadge">시작하기</span>
+              <div className="ehead">
+                <span className="eico eico-dec">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M9 13l2 2 4-4" /></svg>
+                </span>
+                <div><h3>계약방법 결정</h3><div className="ewho">발주 전 · 계약 담당자</div></div>
+              </div>
+              <p>사업명·사업개요·추정가격 3가지만 입력하면 계약유형 분류부터 계약방법·제한경쟁·적용 법령까지 한 번에 추천합니다.</p>
+              <div className="emini">
+                <div className="mi"><span className="miv num">3초</span><span className="mik">입력→추천</span></div>
+                <div className="mi"><span className="miv num">룰엔진</span><span className="mik">결정론 근거</span></div>
+              </div>
+              <div className="ecta">
+                <button className="btn btn-primary" onClick={onDecision}>계약방법 결정 시작 →</button>
+              </div>
+            </div>
+
+            {/* 계약 Q&A (법령 챗봇) */}
+            <div className="entry">
+              <div className="ehead">
+                <span className="eico eico-aud">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+                </span>
+                <div><h3>계약 Q&A 챗봇</h3><div className="ewho">법령·실무 질문 자유 응답</div></div>
+              </div>
+              <p>계약 절차·법령 해석·실무 처리 방법을 자유롭게 질문하세요. 답변마다 근거 조문·출처를 함께 제시합니다.</p>
+              <div className="emini">
+                <div className="mi"><span className="miv num">RAG</span><span className="mik">출처 제시</span></div>
+                <div className="mi"><span className="miv num">법령</span><span className="mik">조문 인용</span></div>
+              </div>
+              <div className="ecta">
+                <button className="btn btn-ghost" onClick={onAsk}>계약 Q&A 열기 →</button>
+              </div>
+            </div>
+
+            {/* 용어사전 */}
+            <div className="entry">
+              <div className="ehead">
+                <span className="eico" style={{ background: 'var(--violet-tint)', color: 'var(--violet-ink)' }}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></svg>
+                </span>
+                <div><h3>계약 용어사전</h3><div className="ewho">추정가격·적격심사·중기간…</div></div>
+              </div>
+              <p>공공계약 실무 용어를 검색하고, 관련 용어로 이어서 학습할 수 있습니다. 위저드 화면의 용어에도 자동으로 풀이가 달립니다.</p>
+              <div className="ecta">
+                <button className="btn btn-ghost" onClick={onGlossary}>용어사전 열기 →</button>
+              </div>
+            </div>
+
+            {/* 룰 결정트리 */}
+            <div className="entry">
+              <div className="ehead">
+                <span className="eico" style={{ background: 'var(--safe-tint)', color: 'var(--safe-ink)' }}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v6M12 9l-6 5M12 9l6 5" /><circle cx="12" cy="5" r="2" /><circle cx="6" cy="17" r="2" /><circle cx="18" cy="17" r="2" /></svg>
+                </span>
+                <div><h3>룰 결정트리</h3><div className="ewho">추천 로직 투명 공개</div></div>
+              </div>
+              <p>계약방법을 결정하는 룰엔진 전체를 의사결정트리로 공개합니다. 어떤 입력이 어떤 방법으로 이어지는지 직접 검증하세요.</p>
+              <div className="ecta">
+                <button className="btn btn-ghost" onClick={onRuleTree}>결정트리 열기 →</button>
+              </div>
+            </div>
+          </div>
+
+          <p style={{ marginTop: 18, fontSize: 12, color: 'var(--ink-3)' }}>
+            AI는 부정확할 수 있습니다. 중요한 결정 시 법령·실무 기준을 반드시 확인하세요.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}

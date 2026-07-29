@@ -1,0 +1,24 @@
+# 런타임·로컬 데이터 (커밋 금지)
+.env
+chroma_db/
+logs/
+data/sessions.db
+data/openai_daily_cap.json
+data/feedback_shots/
+data/source_docs/
+tools/laws/*.xml
+tools/laws/*.hwpx
+tools/admin_rules/*.xml
+tools/admin_rules/*.jsonl
+etl/data/
+tests/results/
+
+# 빌드 산출물
+frontend/node_modules/
+frontend/dist/
+frontend/dist.bak*
+__pycache__/
+*.pyc
+.venv/
+*.bak
+*.bak_*

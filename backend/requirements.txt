@@ -1,0 +1,13 @@
+fastapi==0.136.1
+uvicorn[standard]
+pydantic-settings
+chromadb
+openai
+google-genai
+python-multipart
+httpx
+sentence-transformers  # 로컬 다국어 임베딩(RAG) — EMBEDDING_ENDPOINT 미설정 시 폴백 경로
+torch  # sentence-transformers 의존
+rank-bm25  # BM25 하이브리드 검색 인덱스
+PyMuPDF  # 공개 가이드 PDF 파싱(etl)
+python-docx  # DOCX 파싱(etl)

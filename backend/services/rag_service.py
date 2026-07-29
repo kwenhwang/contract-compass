@@ -1,0 +1,864 @@
+"""ChromaDB 하이브리드 검색 — 규칙 엔진 결과에 법령 원문 근거 추가.
+
+공개 코퍼스 3원 체제: law_articles(법령 조문, law.go.kr) + admin_rules(계약예규 등
+행정규칙) + public_guides(감사원 공공계약 실무가이드 등 공개 간행물). faq는
+public_guides에서 파생한 Q&A 청크(선택 — 없으면 자동 생략).
+"""
+import re
+import chromadb
+from chromadb import Collection
+from backend.config import get_settings
+from backend.services.embedding import GeminiEmbeddingFunction
+
+_settings = get_settings()
+
+# 계약유형과 무관하게 공개 가이드 단일 컬렉션을 검색한다(가이드는 유형 횡단 자료).
+GUIDES_COLLECTION = _settings.collection_public_guides
+COLLECTION_MAP = {
+    "service": GUIDES_COLLECTION,
+    "product": GUIDES_COLLECTION,
+    "public_procurement": GUIDES_COLLECTION,
+    "construction": GUIDES_COLLECTION,
+}
+
+LAW_ARTICLES_COLLECTION = _settings.collection_law_articles
+ADMIN_RULES_COLLECTION = _settings.collection_admin_rules
+FAQ_COLLECTION = _settings.collection_faq
+
+# 사용자 질문에서 토픽 추출용 키워드 사전 (tools/tag_topics.py와 동기 유지)
+_TOPIC_KEYWORDS: dict[str, list[str]] = {
+    "수의계약": ["수의계약", "수의로"],
+    "소액수의": ["소액수의"],
+    "일반경쟁": ["일반경쟁"],
+    "제한경쟁": ["제한경쟁"],
+    "지명경쟁": ["지명경쟁"],
+    "협상계약": ["협상계약", "협상에 의한"],
+    "적격심사": ["적격심사"],
+    "종합심사": ["종합심사"],
+    "PQ": ["PQ", "사전심사", "사업수행능력"],
+    "낙찰자결정": ["낙찰자", "낙찰"],
+    "예정가격": ["예정가격"],
+    "물가변동": ["물가변동", "물가조정"],
+    "설계변경": ["설계변경", "신규비목", "협의단가"],
+    "공기연장": ["공기연장", "공기 연장"],
+    "변경계약": ["변경계약", "계약변경"],
+    "계약보증금": ["계약보증금"],
+    "입찰보증금": ["입찰보증금"],
+    "이행보증금": ["이행보증금"],
+    "하자보수": ["하자보수", "하자담보"],
+    "지체상금": ["지체상금"],
+    "선금": ["선금"],
+    "단가계약": ["단가계약"],
+    "장기계속계약": ["장기계속"],
+    "공동수급체": ["공동수급체", "공동이행", "분담이행"],
+    "중기간경쟁": ["중소기업자간", "중기간"],
+    "공사용자재직접구매": ["공사용자재", "직접구매"],
+    "계약이행능력심사": ["계약이행능력심사", "이행능력심사"],
+    "검사": ["준공검사", "납품검사", "검사 기간"],
+    "부정당업자": ["부정당업자"],
+    "특정조달": ["특정조달", "정부조달협정"],
+    "입찰공고": ["입찰공고"],
+    "재공고": ["재공고"],
+    "유찰": ["유찰"],
+}
+
+
+def _load_abbreviations() -> dict[str, str]:
+    """glossary.json의 aliases를 {약어: 정식어}로 로드 — 약어 검색 확장용 (단일 소스)."""
+    try:
+        import json as _json
+        from pathlib import Path as _Path
+        gp = _Path(__file__).resolve().parents[2] / "data" / "glossary.json"
+        data = _json.loads(gp.read_text(encoding="utf-8"))
+        m: dict[str, str] = {}
+        for e in data:
+            term = e.get("term", "")
+            for a in (e.get("aliases") or []):
+                if a and a != term:
+                    m[a] = term
+        return m
+    except Exception:
+        return {}
+
+
+_ABBREVIATIONS = _load_abbreviations()
+
+
+def expand_query_abbreviations(query: str) -> str:
+    """질의에 약어가 있으면 정식어를 덧붙여 임베딩·키워드 매칭 보강.
+
+    예: '예가 산정 방법' → '예가 산정 방법 예정가격'. 원문 보존(append만).
+    """
+    if not query:
+        return query
+    extra = [full for ab, full in _ABBREVIATIONS.items() if ab in query and full not in query]
+    return (query + " " + " ".join(extra)) if extra else query
+
+
+def _extract_query_topics(query: str) -> set[str]:
+    """사용자 질문에서 매칭되는 토픽 ID 집합 반환."""
+    return {tid for tid, patterns in _TOPIC_KEYWORDS.items() if any(p in query for p in patterns)}
+
+
+# BM25 토큰화 (tools/build_bm25_index.py와 동기)
+_BM25_TOKEN_RE = re.compile(r"[가-힣]{2,}|[A-Za-z]{2,}|\d+")
+_BM25_STOPWORDS = {
+    "이다", "하다", "있다", "없다", "되다", "그것", "이것", "저것",
+    "그리고", "하지만", "그러나", "또한", "또는", "따라", "위해",
+    "대한", "관한", "에서", "에게", "으로", "라고", "이라", "한다",
+    "있는", "없는", "되는", "하는", "같은", "다른", "모든", "각각",
+}
+
+
+def _bm25_tokenize(text: str) -> list[str]:
+    tokens = _BM25_TOKEN_RE.findall(text or "")
+    return [t for t in tokens if t not in _BM25_STOPWORDS and len(t) >= 2]
+
+_GUIDE_PATTERNS = ["건설엔지니어", "sw_guide", "engineering_guide", "감사원", "가이드", "판례"]
+
+
+def _classify_source(document_id: str) -> str:
+    """document_id 패턴으로 소스 유형 분류 — 공개 코퍼스는 전부 guide 계열."""
+    return "guide"
+
+
+class RAGService:
+    def __init__(self, chroma_path: str):
+        self._client = chromadb.PersistentClient(path=chroma_path)
+        self._ef = GeminiEmbeddingFunction()
+        # 2026-05-20: BM25 하이브리드 검색 — Dense(임베딩) + BM25(키워드) RRF 결합
+        self._bm25_data: dict | None = None
+        try:
+            import pickle
+            from pathlib import Path
+            idx_path = Path(chroma_path) / "bm25_index.pkl"
+            if idx_path.exists():
+                with open(idx_path, "rb") as f:
+                    self._bm25_data = pickle.load(f)
+        except Exception:
+            self._bm25_data = None
+        self._build_law_ref_index()
+
+    def _get_collection(self, contract_type: str) -> Collection | None:
+        name = COLLECTION_MAP.get(contract_type)
+        if not name:
+            return None
+        try:
+            kwargs = {"embedding_function": self._ef} if self._ef else {}
+            return self._client.get_collection(name, **kwargs)
+        except Exception:
+            return None
+
+    def search(self, query: str, contract_type: str, top_k: int = 5) -> list[dict]:
+        """벡터 유사도 검색 + 키워드 부스팅. law_refs 메타데이터 포함."""
+        query = expand_query_abbreviations(query)  # 약어→정식어 확장 (예가→예정가격 등)
+        collection = self._get_collection(contract_type)
+        if collection is None:
+            return []
+
+        results = collection.query(
+            query_texts=[query],
+            n_results=min(top_k * 2, collection.count() or 1),
+            include=["documents", "metadatas", "distances"],
+        )
+
+        chunks = []
+        docs = results.get("documents", [[]])[0]
+        metas = results.get("metadatas", [[]])[0]
+        dists = results.get("distances", [[]])[0]
+        ids = results.get("ids", [[]])[0]
+
+        for i, (doc, meta, dist) in enumerate(zip(docs, metas, dists)):
+            relevance = max(0.0, 1.0 - dist)
+            boost = 0.1 if self._keyword_match(query, doc) else 0.0
+            law_refs_raw = meta.get("law_refs", "")
+            law_refs = [r.strip() for r in law_refs_raw.split(",") if r.strip()] if law_refs_raw else []
+            chunks.append({
+                "chunk_id": ids[i] if i < len(ids) else meta.get("chunk_id", ""),
+                "document_id": meta.get("document_id", ""),
+                "section_title": meta.get("section_title", ""),
+                "chunk_type": meta.get("chunk_type", ""),
+                "content": doc[:600],
+                "relevance_score": round(min(1.0, relevance + boost), 3),
+                "contract_type": meta.get("contract_type", ""),
+                "law_refs": law_refs,
+                "topics": meta.get("topics", ""),
+            })
+
+        chunks.sort(key=lambda x: x["relevance_score"], reverse=True)
+        return chunks[:top_k]
+
+    @staticmethod
+    def _ref_lookup_variants(ref: str) -> list[str]:
+        """법령 참조를 여러 형태로 변환하여 레지스트리 키 매칭 범위 확장."""
+        variants = [ref]
+        art_m = re.search(r"제\d+조(?:의\d+)?", ref)
+        art_str = art_m.group(0) if art_m else ""
+
+        # "XXX 시행령 제N조" → "시행령 제N조" (축약)
+        m = re.search(r"(시행령\s*제\d+조(?:의\d+)?)", ref)
+        if m and m.group(1) != ref:
+            variants.append(m.group(1))
+
+        # "시행령 제N조" → "국가계약법 시행령 제N조" (확장)
+        if re.match(r"^시행령\s*제\d+조", ref) and art_str:
+            variants.append(f"국가계약법 시행령 {art_str}")
+            variants.append(f"국가계약법 시행규칙 {art_str}")
+
+        # "국가계약법 제N조" → 그대로 (이미 정확)
+        return list(dict.fromkeys(variants))  # 순서 유지 중복 제거
+
+    def _get_law_articles(self, law_refs: list[str]) -> list[dict]:
+        """law_refs 목록에 해당하는 법령 조문 청크를 law_articles 컬렉션에서 조회.
+
+        Hierarchical 보강 (2026-05-31):
+        - chunk_level='child'(항 단위) 매칭 시 parent_ref(조문 전체)도 함께 가져옴
+        - LLM·사용자가 부분(항)만 보는 게 아니라 조문 전체 맥락 동시 참조
+        """
+        try:
+            collection = self._client.get_collection(LAW_ARTICLES_COLLECTION)
+        except Exception:
+            return []
+
+        articles = []
+        seen_refs: set[str] = set()
+        tried: set[str] = set()
+        parent_refs_to_fetch: set[str] = set()
+
+        for ref in law_refs:
+            if ref in seen_refs:
+                continue
+            seen_refs.add(ref)
+            for variant in self._ref_lookup_variants(ref):
+                if variant in tried:
+                    continue
+                tried.add(variant)
+                try:
+                    result = collection.get(
+                        where={"law_ref": variant},
+                        include=["documents", "metadatas"],
+                    )
+                    for doc, meta in zip(result.get("documents", []), result.get("metadatas", [])):
+                        chunk_level = meta.get("chunk_level", "single")
+                        parent_ref = meta.get("parent_ref", "")
+                        safe_id = re.sub(r"[^a-zA-Z0-9가-힣]", "_", variant)
+                        articles.append({
+                            "chunk_id": f"law_{safe_id}",
+                            "section_title": f"[법령 조문] {meta.get('law_ref', variant)}",
+                            "chunk_type": "law_article",
+                            "chunk_level": chunk_level,
+                            "content": doc[:800],
+                            "relevance_score": 1.0,
+                            "contract_type": "law",
+                            "law_ref": variant,
+                        })
+                        # Hierarchical: child 매칭 시 parent도 큐에 추가
+                        if chunk_level == "child" and parent_ref and parent_ref not in seen_refs:
+                            parent_refs_to_fetch.add(parent_ref)
+                except Exception:
+                    continue
+
+        # 2단계: parent_ref들을 가져와 articles에 추가 (앞쪽에 삽입 — 맥락 우선)
+        parent_articles = []
+        for parent_ref in parent_refs_to_fetch:
+            if parent_ref in seen_refs:
+                continue
+            seen_refs.add(parent_ref)
+            try:
+                result = collection.get(
+                    where={"law_ref": parent_ref},
+                    include=["documents", "metadatas"],
+                )
+                for doc, meta in zip(result.get("documents", []), result.get("metadatas", [])):
+                    safe_id = re.sub(r"[^a-zA-Z0-9가-힣]", "_", parent_ref)
+                    parent_articles.append({
+                        "chunk_id": f"law_parent_{safe_id}",
+                        "section_title": f"[법령 조문 — 조 전체] {meta.get('law_ref', parent_ref)}",
+                        "chunk_type": "law_article",
+                        "chunk_level": "parent",
+                        "content": doc[:1500],  # parent는 더 길게 (조문 전체 맥락)
+                        "relevance_score": 0.95,  # child보다 약간 낮은 점수
+                        "contract_type": "law",
+                        "law_ref": parent_ref,
+                    })
+            except Exception:
+                continue
+
+        # parent를 앞에, child를 뒤에 (LLM이 맥락 먼저 읽도록)
+        return parent_articles + articles
+
+    def search_with_references(
+        self, query: str, contract_type: str, top_k: int = 5
+    ) -> tuple[list[dict], list[dict]]:
+        """벡터 검색 + 법령 조문 참조 확장.
+
+        Returns:
+            (content_chunks, law_chunks) — 내용 청크와 참조 법령 조문 청크
+        """
+        content_chunks = self.search(query, contract_type, top_k)
+
+        # 검색된 청크들의 law_refs 수집 (순서 유지, 중복 제거)
+        seen: dict[str, None] = {}
+        for chunk in content_chunks:
+            for ref in chunk.get("law_refs", []):
+                seen[ref] = None
+
+        law_chunks = self._get_law_articles(list(seen.keys())) if seen else []
+        return content_chunks, law_chunks
+
+    def _build_law_ref_index(self) -> None:
+        """가이드 컬렉션을 순회하며 law_ref → 청크 역인덱스 구축 (초기화 1회)."""
+        self._law_ref_index: dict[str, list[dict]] = {}
+        for coll_name in {GUIDES_COLLECTION}:
+            try:
+                col = self._client.get_collection(coll_name, embedding_function=self._ef)
+                items = col.get(include=["documents", "metadatas"])
+            except Exception:
+                continue
+            for chunk_id, doc, meta in zip(
+                items.get("ids", []),
+                items.get("documents", []),
+                items.get("metadatas", []),
+            ):
+                if not meta:
+                    continue
+                law_refs_raw = meta.get("law_refs", "")
+                if not law_refs_raw:
+                    continue
+                law_refs = [r.strip() for r in law_refs_raw.split(",") if r.strip()]
+                doc_id = meta.get("document_id", "")
+                chunk_data = {
+                    "chunk_id": chunk_id,
+                    "collection": coll_name,
+                    "document_id": doc_id,
+                    "source_type": _classify_source(doc_id),
+                    "section_title": meta.get("section_title", ""),
+                    "content": doc[:600] if doc else "",
+                    "contract_type": meta.get("contract_type", ""),
+                    "law_refs": law_refs,
+                    "relevance_score": 0.0,
+                }
+                for ref in law_refs:
+                    self._law_ref_index.setdefault(ref, []).append(chunk_data)
+
+    def search_knowledge_web(
+        self, query: str, contract_type: str, top_k: int = 5
+    ) -> dict[str, list[dict]]:
+        """GraphRAG: 법령 허브 경유로 가이드·법령 카테고리별 청크 반환."""
+        primary_chunks = self.search(query, contract_type, top_k)
+
+        seen_refs: dict[str, None] = {}
+        for chunk in primary_chunks:
+            for ref in chunk.get("law_refs", []):
+                seen_refs[ref] = None
+        all_law_refs = list(seen_refs.keys())
+
+        buckets: dict[str, list[dict]] = {"textbook": [], "guide": []}
+        seen_ids: set[str] = set()
+
+        for chunk in primary_chunks:
+            stype = _classify_source(chunk.get("document_id", ""))
+            chunk["source_type"] = stype
+            cid = chunk["chunk_id"]
+            if cid not in seen_ids:
+                seen_ids.add(cid)
+                buckets.setdefault(stype, []).append(chunk)
+
+        for ref in all_law_refs:
+            for cd in self._law_ref_index.get(ref, []):
+                cid = cd["chunk_id"]
+                if cid in seen_ids:
+                    continue
+                seen_ids.add(cid)
+                stype = cd["source_type"]
+                buckets.setdefault(stype, []).append(cd)
+
+        law_chunks = self._get_law_articles(all_law_refs) if all_law_refs else []
+        law_sources = []
+        for lc in law_chunks:
+            law_sources.append({
+                "chunk_id": lc["chunk_id"],
+                "document_id": LAW_ARTICLES_COLLECTION,
+                "section_title": lc["section_title"],
+                "content": lc["content"],
+                "relevance_score": lc["relevance_score"],
+                "source_type": "law",
+                "law_refs": [],
+            })
+
+        return {
+            "textbook": buckets.get("textbook", []),
+            "guide": buckets.get("guide", []),
+            "law": law_sources,
+        }
+
+    def build_knowledge_web_context(
+        self,
+        knowledge_web: dict[str, list[dict]],
+        max_chars: int = 2000,
+    ) -> str:
+        """카테고리별 청크를 구분된 LLM 컨텍스트 문자열로 변환."""
+        LABELS = {"textbook": "📘 참고자료", "guide": "📋 실무가이드", "law": "⚖️ 법령"}
+        parts: list[str] = []
+        total = 0
+        for stype in ("textbook", "guide", "law"):
+            chunks = knowledge_web.get(stype, [])
+            if not chunks:
+                continue
+            label = LABELS[stype]
+            for c in chunks:
+                excerpt = f"[{label} — {c.get('section_title', '')}]\n{c.get('content', '')}"
+                if total + len(excerpt) > max_chars:
+                    break
+                parts.append(excerpt)
+                total += len(excerpt)
+            if total >= max_chars:
+                break
+        return "\n\n---\n\n".join(parts)
+
+    @staticmethod
+    def _extract_search_keywords(query: str) -> list[str]:
+        """쿼리에서 한국어 핵심어 + 접미어 분리 변형 추출 (키워드 폴백 검색용)."""
+        # 조사·어미 등 짧은 기능어 제외
+        tokens = re.findall(r"[가-힣]{2,}", query)
+        stop = {
+            "어떻게", "어떤가", "무엇", "입니까", "인가요", "하나요", "됩니까", "있나요",
+            "위해서", "위하여", "절차가", "절차는", "절차를", "방법은", "방법이",
+            "있어요", "되나요", "이어야", "해야하", "최소", "최대", "기간은", "기간이",
+            "일인지", "일인가", "경우는", "경우에", "때에는", "대하여", "관련해",
+        }
+        # 조사·어미 제거 (은/는/이/가/을/를/에/의/로/도/만/과/와/으로 등)
+        _PARTICLES = re.compile(r"(은|는|이|가|을|를|에|의|로|도|만|과|와|으로|에서|에게|부터|까지|이란|이라|라면)$")
+        stripped: list[str] = []
+        for t in tokens:
+            m = _PARTICLES.search(t)
+            if m and len(t) - len(m.group()) >= 2:
+                stripped.append(t[: -len(m.group())])
+            else:
+                stripped.append(t)
+        tokens = stripped
+
+        # 2글자 범용어(최소, 경우 등)는 제외하되, 도메인 핵심 2글자어(선금, 하자 등)는 허용
+        _GENERIC_TWO = {"최소", "최대", "경우", "방법", "기준", "요건", "조건", "절차",
+                        "관련", "규정", "기간", "이상", "이하", "이전", "이후", "적용",
+                        "대상", "내용", "여부", "사항", "현재", "제출", "해당", "가능"}
+        base = [t for t in tokens if t not in stop and (len(t) >= 3 or t not in _GENERIC_TWO)]
+
+        # 복합어 접미어 제거 변형 추가 (예: 불용처리→불용, 지급절차→지급)
+        _SUFFIXES = ("처리", "절차", "방법", "기준", "요건", "규정", "관련", "검토", "여부", "률", "율", "액", "비")
+        expanded: list[str] = []
+        seen: set[str] = set()
+        for kw in base:
+            for s in _SUFFIXES:
+                if kw.endswith(s) and len(kw) > len(s) + 1:
+                    short = kw[: -len(s)]
+                    if len(short) >= 2 and short not in seen:
+                        seen.add(short)
+                        expanded.append(short)
+            if kw not in seen:
+                seen.add(kw)
+                expanded.append(kw)
+        return expanded[:6]
+
+    def _keyword_fallback(
+        self, query: str, keywords: list[str], top_k: int, seen: dict[str, float],
+        clean_query: str | None = None,
+    ) -> list[dict]:
+        """키워드가 포함된 청크를 where_document 필터로 추가 검색."""
+        # 4글자 미만 단어는 너무 범용적이라 노이즈 유발 → WHERE 필터에서 제외
+        # 단, 도메인 핵심 2~3글자어(선금, 하자, 지체 등)는 허용
+        _SHORT_DOMAIN = {"선금", "하자", "지체", "낙찰", "입찰", "수의", "공고", "보증", "불용", "협상"}
+        # 계약문서 전체에 편재하는 범용어 → WHERE 필터로 쓰면 수십 개 무관 청크 유입
+        _FILTER_BLOCKLIST = {"계약금액", "계약금", "계약서", "계약기간", "계약체결", "계약방법", "계약내용"}
+        filter_kws = [k for k in keywords if (len(k) >= 4 or k in _SHORT_DOMAIN) and k not in _FILTER_BLOCKLIST]
+        if not filter_kws:
+            filter_kws = keywords[:1]  # 최소 1개 보장
+
+        # 도메인 동의어·연관어 확장: 원문이 다른 표기를 쓰는 경우 커버
+        _DOMAIN_SYNONYMS: dict[str, list[str]] = {
+            "하자보수보증금": ["하자보수보증율", "하자보증금액", "하자보수보증금"],  # 원문: 보증율(용역)/하자보증금액(물품) vs 쿼리: 보증금
+            "하자보수보증율": ["하자보수보증금", "하자보증금액", "하자보수보증율"],
+            "입찰공고": ["공고기간", "공고시기"],  # 입찰공고 기간 관련 청크는 '공고기간' 포함
+            "물가변동": ["조정요건", "품목조정율"],  # 물가변동 조정요건 청크는 '조정요건'·'품목조정율' 포함
+            "협상": ["협상적격자", "협상순위", "협상에 의한"],  # 협상계약 세부 청크 포함
+        }
+        expanded_kws: list[str] = []
+        seen_kw: set[str] = set(filter_kws)
+        for kw in filter_kws:
+            for syn in _DOMAIN_SYNONYMS.get(kw, []):
+                if syn not in seen_kw:
+                    seen_kw.add(syn)
+                    expanded_kws.append(syn)
+        filter_kws = filter_kws + expanded_kws
+
+        extras: list[dict] = []
+        for kw in filter_kws:
+            for coll_name in COLLECTION_MAP.values():
+                try:
+                    col = self._client.get_collection(coll_name, embedding_function=self._ef)
+                    cnt = col.count()
+                    if cnt == 0:
+                        continue
+                    results = col.query(
+                        query_texts=[query],
+                        n_results=min(10, cnt),
+                        where_document={"$contains": kw},
+                        include=["documents", "metadatas", "distances"],
+                    )
+                    docs = results.get("documents", [[]])[0]
+                    metas = results.get("metadatas", [[]])[0]
+                    dists = results.get("distances", [[]])[0]
+                    ids = results.get("ids", [[]])[0]
+                    for i, (doc, meta, dist) in enumerate(zip(docs, metas, dists)):
+                        cid = ids[i] if i < len(ids) else meta.get("chunk_id", "")
+                        if cid in seen:
+                            continue
+                        seen[cid] = 0.0
+                        # 벡터 유사도 + 0.25 부스트 (최대 0.80)
+                        score = round(min(0.80, max(0.0, 1.0 - dist) + 0.25), 3)
+                        doc_id = meta.get("document_id", "")
+                        extras.append({
+                            "chunk_id": cid,
+                            "document_id": doc_id,
+                            "section_title": meta.get("section_title", ""),
+                            "chunk_type": meta.get("chunk_type", ""),
+                            "content": doc[:600],
+                            "relevance_score": score,
+                            "contract_type": meta.get("contract_type", ""),
+                            "source_type": _classify_source(doc_id),
+                            "law_refs": [],
+                        })
+                except Exception:
+                    continue
+        return extras
+
+    def search_all(self, query: str, top_k: int = 5) -> list[dict]:
+        """가이드·법령·예규·FAQ 컬렉션 통합 검색. Q&A 용."""
+        query = expand_query_abbreviations(query)  # 약어→정식어 확장
+        all_chunks: list[dict] = []
+        seen: dict[str, float] = {}
+
+        for contract_type in COLLECTION_MAP:
+            chunks = self.search(query, contract_type, top_k=top_k)
+            for c in chunks:
+                c.setdefault("contract_type_searched", contract_type)
+                c.setdefault("source_type", _classify_source(c.get("document_id", "")))
+                cid = c["chunk_id"]
+                if cid not in seen:
+                    seen[cid] = c["relevance_score"]
+                    all_chunks.append(c)
+
+        # law_articles 직접 벡터 검색
+        # 지방계약법 청크는 질문에 지방/지자체 키워드가 있을 때만 포함
+        # (기본 관점은 국가계약법 — 없으면 국가계약 케이스에 노이즈로 작용)
+        is_local_gov_q = any(kw in query for kw in ("지방", "지자체", "지방자치"))
+        try:
+            law_col = self._client.get_collection(LAW_ARTICLES_COLLECTION)
+
+            # 2026-05-31: 도메인 키워드 부스팅 — 한국어 임베딩이 못 잡는 핵심 법령 조문 강제 매칭
+            # 예: "수의계약 사유" → 시행령 제26조 (제목에 '수의계약에 의할 수 있는 경우')
+            DOMAIN_KEYWORDS = ["수의계약", "적격심사", "협상에 의한 계약", "협상", "제한경쟁",
+                               "지명경쟁", "일반경쟁", "낙찰자", "예정가격", "입찰공고",
+                               "부정당업자", "중소기업자간"]
+            try:
+                triggered = [kw for kw in DOMAIN_KEYWORDS if kw in query]
+                if triggered:
+                    all_law = law_col.get(include=["documents", "metadatas"])
+                    # 국가계약법(시행령·시행규칙) 청크 우선 정렬
+                    items = list(zip(all_law["ids"], all_law["documents"], all_law["metadatas"]))
+                    def _priority(item):
+                        m = item[2] or {}
+                        ln = m.get("law_name", "") or ""
+                        if "국가계약법" in ln: return 0  # 1순위
+                        if "공기업" in ln or "준정부기관" in ln: return 1
+                        if "중소기업제품" in ln or "건설기술" in ln: return 2
+                        return 3
+                    items.sort(key=_priority)
+                    added = 0
+                    for cid, doc, meta in items:
+                        if added >= 4:  # 키워드 부스팅 최대 4건
+                            break
+                        if not isinstance(meta, dict) or cid in seen:
+                            continue
+                        if not is_local_gov_q and (meta.get("law_name", "") or "").startswith("지방자치단체"):
+                            continue
+                        # 조 전체(parent) 또는 single만
+                        if meta.get("chunk_level") not in (None, "single", "parent"):
+                            continue
+                        # 조문 제목(첫 200자)에 트리거 키워드 포함 시 부스팅
+                        head = (doc or "")[:200]
+                        if any(kw in head for kw in triggered):
+                            seen[cid] = 0.95
+                            all_chunks.append({
+                                "chunk_id": cid,
+                                "document_id": LAW_ARTICLES_COLLECTION,
+                                "section_title": meta.get("law_ref", ""),
+                                "chunk_type": "law_article",
+                                "chunk_level": meta.get("chunk_level", "single"),
+                                "content": doc[:1200],
+                                "relevance_score": 0.95,
+                                "contract_type": "law",
+                                "source_type": "law",
+                                "matched_via": "keyword",
+                                "law_refs": [],
+                            })
+                            added += 1
+            except Exception:
+                pass
+
+            results = law_col.query(
+                query_texts=[query],
+                # 필터로 줄어들 수 있어 over-fetch
+                n_results=min(top_k * 2, law_col.count() or 1),
+                include=["documents", "metadatas", "distances"],
+            )
+            docs = results.get("documents", [[]])[0]
+            metas = results.get("metadatas", [[]])[0]
+            dists = results.get("distances", [[]])[0]
+            ids = results.get("ids", [[]])[0]
+            added_law = 0
+            parent_refs_to_fetch: set[str] = set()
+            # ENV: HIERARCHICAL_LAW_RAG=false 면 parent fetch 비활성 (A/B 비교용)
+            import os
+            _hier_on = os.environ.get("HIERARCHICAL_LAW_RAG", "true").lower() != "false"
+            for i, (doc, meta, dist) in enumerate(zip(docs, metas, dists)):
+                if not is_local_gov_q and (meta.get("law_name", "") or "").startswith("지방자치단체"):
+                    continue  # 국가계약 질문에 지방계약법 노이즈 제외
+                cid = ids[i] if i < len(ids) else f"law_{i}"
+                chunk_level = meta.get("chunk_level", "single")
+                parent_ref = meta.get("parent_ref", "")
+                if cid not in seen:
+                    seen[cid] = 0.0
+                    all_chunks.append({
+                        "chunk_id": cid,
+                        "document_id": LAW_ARTICLES_COLLECTION,
+                        "section_title": meta.get("law_ref", ""),
+                        "chunk_type": "law_article",
+                        "chunk_level": chunk_level,
+                        "content": doc[:600],
+                        "relevance_score": round(max(0.0, 1.0 - dist), 3),
+                        "contract_type": "law",
+                        "source_type": "law",
+                        "law_refs": [],
+                    })
+                    added_law += 1
+                    # Hierarchical: child 매칭 시 parent도 큐
+                    if _hier_on and chunk_level == "child" and parent_ref:
+                        parent_refs_to_fetch.add(parent_ref)
+                    if added_law >= top_k:
+                        break
+            # parent 청크 추가 fetch
+            for p_ref in parent_refs_to_fetch:
+                try:
+                    p_result = law_col.get(
+                        where={"law_ref": p_ref},
+                        include=["documents", "metadatas"],
+                    )
+                    for p_doc, p_meta in zip(p_result.get("documents", []), p_result.get("metadatas", [])):
+                        p_cid = f"law_parent_{p_ref}"
+                        if p_cid in seen: continue
+                        seen[p_cid] = 0.0
+                        all_chunks.append({
+                            "chunk_id": p_cid,
+                            "document_id": LAW_ARTICLES_COLLECTION,
+                            "section_title": f"[조 전체] {p_meta.get('law_ref', p_ref)}",
+                            "chunk_type": "law_article",
+                            "chunk_level": "parent",
+                            "content": p_doc[:1200],  # parent는 더 긴 컨텍스트
+                            "relevance_score": 0.85,
+                            "contract_type": "law",
+                            "source_type": "law",
+                            "law_refs": [],
+                        })
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        # faq (공개 가이드 파생 Q&A) 직접 벡터 검색 — 부스팅 없음, 후보 풀에 추가만
+        try:
+            faq_col = self._client.get_collection(FAQ_COLLECTION, embedding_function=self._ef)
+            results = faq_col.query(
+                query_texts=[query],
+                n_results=min(top_k, faq_col.count() or 1),
+                include=["documents", "metadatas", "distances"],
+            )
+            docs = results.get("documents", [[]])[0]
+            metas = results.get("metadatas", [[]])[0]
+            dists = results.get("distances", [[]])[0]
+            ids = results.get("ids", [[]])[0]
+            for i, (doc, meta, dist) in enumerate(zip(docs, metas, dists)):
+                cid = ids[i] if i < len(ids) else f"faq_{i}"
+                if cid not in seen:
+                    seen[cid] = 0.0
+                    # FAQ 청크는 dedup이 별개 문서로 인식하도록 document_id에 prefix
+                    orig_doc = meta.get("document_id", "") or meta.get("source_collection", FAQ_COLLECTION)
+                    all_chunks.append({
+                        "chunk_id": cid,
+                        "document_id": f"faq_{orig_doc}",
+                        "section_title": meta.get("section_title", ""),
+                        "chunk_type": "faq",
+                        "content": doc[:800],
+                        "relevance_score": round(max(0.0, 1.0 - dist), 3),
+                        "contract_type": "faq",
+                        "source_type": "faq",
+                        "is_faq": True,
+                        "law_refs": [],
+                    })
+        except Exception:
+            pass
+
+        # admin_rules (행정규칙) 직접 벡터 검색
+        try:
+            adm_col = self._client.get_collection(ADMIN_RULES_COLLECTION, embedding_function=self._ef)
+            results = adm_col.query(
+                query_texts=[query],
+                n_results=min(top_k, adm_col.count() or 1),
+                include=["documents", "metadatas", "distances"],
+            )
+            docs = results.get("documents", [[]])[0]
+            metas = results.get("metadatas", [[]])[0]
+            dists = results.get("distances", [[]])[0]
+            ids = results.get("ids", [[]])[0]
+            for i, (doc, meta, dist) in enumerate(zip(docs, metas, dists)):
+                cid = ids[i] if i < len(ids) else f"adm_{i}"
+                if cid not in seen:
+                    seen[cid] = 0.0
+                    # 행정규칙은 권위 자료 + 직접 벡터 검색 결과이므로
+                    # 다른 컬렉션의 키워드 부스팅(~0.8)과 형평성 맞추기 위해 +0.35 보정
+                    raw = 1.0 - dist
+                    score = round(min(0.95, raw + 0.35) if raw > 0.3 else raw, 3)
+                    all_chunks.append({
+                        "chunk_id": cid,
+                        "document_id": ADMIN_RULES_COLLECTION,
+                        "section_title": meta.get("section_title") or meta.get("law_ref", ""),
+                        "chunk_type": "admin_rule",
+                        "content": doc[:800],
+                        "relevance_score": score,
+                        "contract_type": "admin_rule",
+                        "source_type": "guide",
+                        "law_refs": [],
+                    })
+        except Exception:
+            pass
+
+        # 키워드 폴백: 조사 제거된 핵심어 쿼리로 벡터 검색 정확도 향상
+        kws = self._extract_search_keywords(query)
+        if kws:
+            clean_q = " ".join(kws)
+            extras = self._keyword_fallback(query, kws, top_k, seen, clean_query=clean_q)
+            all_chunks.extend(extras)
+
+        # 2026-05-20: Dense + BM25 RRF — 부스팅(인위적 점수 조작) 없이 정렬 순서만 통합.
+        # 토픽 부스팅 제거 시 얻은 교훈: 인위적 점수 조작은 효과 미미·부작용.
+        # 여기서는 (1) BM25 top 10 중 누락된 청크 후보 추가, (2) RRF로 정렬만 수행.
+        # relevance_score(UI 표시용)는 dense 원본 유지.
+        if self._bm25_data:
+            try:
+                q_tokens = _bm25_tokenize(query)
+                if q_tokens:
+                    bm25 = self._bm25_data["bm25"]
+                    bm25_ids = self._bm25_data["ids"]
+                    bm25_meta = self._bm25_data["meta"]
+                    scores = bm25.get_scores(q_tokens)
+                    top_idx = scores.argsort()[-30:][::-1]
+                    bm25_rank_map: dict[str, int] = {bm25_ids[i]: r + 1 for r, i in enumerate(top_idx) if scores[i] > 0}
+
+                    # (1) BM25 top 10 중 dense 결과에 없는 청크 후보 추가
+                    seen_ids = {c["chunk_id"] for c in all_chunks}
+                    for i in top_idx[:10]:
+                        cid = bm25_ids[i]
+                        if cid in seen_ids:
+                            continue
+                        cname = bm25_meta[i]["collection"]
+                        try:
+                            col = self._client.get_collection(cname, embedding_function=self._ef)
+                            r = col.get(ids=[cid], include=["documents", "metadatas"])
+                            if r["documents"]:
+                                doc = r["documents"][0]
+                                meta = r["metadatas"][0]
+                                # FAQ 컬렉션은 dedup이 별개 문서로 인식하도록 document_id에 prefix
+                                is_faq = (cname == FAQ_COLLECTION)
+                                doc_id = meta.get("document_id", cname)
+                                if is_faq:
+                                    doc_id = f"faq_{doc_id}"
+                                all_chunks.append({
+                                    "chunk_id": cid,
+                                    "document_id": doc_id,
+                                    "section_title": meta.get("section_title", ""),
+                                    "chunk_type": "faq" if is_faq else meta.get("chunk_type", ""),
+                                    "content": doc[:800],
+                                    # 자연 점수 — 표시용이고 정렬은 RRF가 담당. 부스팅 아님.
+                                    "relevance_score": 0.6,
+                                    "contract_type": "faq" if is_faq else meta.get("contract_type", ""),
+                                    "source_type": "faq" if is_faq else _classify_source(meta.get("document_id", "")),
+                                    "is_faq": is_faq,
+                                    "law_refs": [],
+                                    "topics": meta.get("topics", ""),
+                                    "bm25_rank": bm25_rank_map[cid],
+                                    "bm25_only": True,
+                                })
+                        except Exception:
+                            continue
+
+                    # (2) RRF 정렬 — 두 ranker 통합. relevance_score는 변경 X
+                    K_RRF = 60.0
+                    dense_sorted = sorted(all_chunks, key=lambda x: -x["relevance_score"])
+                    dense_rank_map: dict[str, int] = {c["chunk_id"]: r + 1 for r, c in enumerate(dense_sorted)}
+                    for c in all_chunks:
+                        cid = c["chunk_id"]
+                        d_rank = dense_rank_map.get(cid, 1000)
+                        b_rank = bm25_rank_map.get(cid, 1000)
+                        c["_rrf"] = 1.0 / (K_RRF + d_rank) + 1.0 / (K_RRF + b_rank)
+                        if cid in bm25_rank_map:
+                            c["bm25_rank"] = b_rank
+
+                    all_chunks.sort(key=lambda x: -x.get("_rrf", 0))
+                    for c in all_chunks:
+                        c.pop("_rrf", None)
+                    return all_chunks[:top_k * 3]
+            except Exception:
+                pass
+
+        # BM25 미사용 시 — dense 점수로 정렬
+        all_chunks.sort(key=lambda x: x["relevance_score"], reverse=True)
+        return all_chunks[:top_k * 3]
+
+    @staticmethod
+    def _keyword_match(query: str, doc: str) -> bool:
+        keywords = re.findall(r"\d+(?:\.\d+)?억|수의계약|일반경쟁|제한경쟁|적격심사|중소기업", query)
+        return any(kw in doc for kw in keywords)
+
+    def build_context(
+        self,
+        content_chunks: list[dict],
+        law_chunks: list[dict] | None = None,
+        max_chars: int = 2000,
+    ) -> str:
+        """청크 리스트를 LLM 컨텍스트 문자열로 변환. 법령 조문은 구분선 뒤에 추가."""
+        parts = []
+        total = 0
+
+        for c in content_chunks:
+            excerpt = f"[출처: {c['section_title']}]\n{c['content']}"
+            if total + len(excerpt) > max_chars:
+                break
+            parts.append(excerpt)
+            total += len(excerpt)
+
+        if law_chunks:
+            law_budget = max(0, (max_chars * 2 // 3) - total)
+            if law_budget > 0:
+                law_parts = []
+                law_total = 0
+                for c in law_chunks:
+                    excerpt = f"[법령 조문] {c.get('law_ref', c['section_title'])}\n{c['content']}"
+                    if law_total + len(excerpt) > law_budget:
+                        break
+                    law_parts.append(excerpt)
+                    law_total += len(excerpt)
+                if law_parts:
+                    parts.append("---\n[관련 법령 조문]")
+                    parts.extend(law_parts)
+
+        return "\n\n---\n\n".join(parts)

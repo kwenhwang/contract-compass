@@ -1,0 +1,514 @@
+{
+  "note": "공개 회귀셋 — 법령 경계값 기준 스냅샷 (변경 시 법령 근거로 재검토)",
+  "scenarios": [
+    {
+      "desc": "용역 1900만 소액전자",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "service",
+        "estimated_price": 19000000
+      },
+      "expect_rule_id": "SVC_002",
+      "expect_method": "소액수의계약",
+      "expect_top3": [
+        "SVC_002"
+      ]
+    },
+    {
+      "desc": "용역 2000만 경계",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "service",
+        "estimated_price": 20000000
+      },
+      "expect_rule_id": "SVC_002",
+      "expect_method": "소액수의계약",
+      "expect_top3": [
+        "SVC_002"
+      ]
+    },
+    {
+      "desc": "용역 5000만 경계",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "service",
+        "estimated_price": 50000000
+      },
+      "expect_rule_id": "SVC_002",
+      "expect_method": "소액수의계약",
+      "expect_top3": [
+        "SVC_002"
+      ]
+    },
+    {
+      "desc": "용역 9000만",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "service",
+        "estimated_price": 90000000
+      },
+      "expect_rule_id": "SVC_002",
+      "expect_method": "소액수의계약",
+      "expect_top3": [
+        "SVC_002"
+      ]
+    },
+    {
+      "desc": "용역 1억 경계(이하 수의 가능)",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "service",
+        "estimated_price": 100000000
+      },
+      "expect_rule_id": "SVC_001",
+      "expect_method": "일반경쟁입찰",
+      "expect_top3": [
+        "SVC_001",
+        "SVC_007",
+        "SVC_002"
+      ]
+    },
+    {
+      "desc": "기술용역 3억",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "service",
+        "estimated_price": 300000000,
+        "service_type": "technical",
+        "is_technical_service": true
+      },
+      "expect_rule_id": "SVC_001",
+      "expect_method": "일반경쟁입찰",
+      "expect_top3": [
+        "SVC_001"
+      ]
+    },
+    {
+      "desc": "일반용역 3억",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "service",
+        "estimated_price": 300000000
+      },
+      "expect_rule_id": "SVC_001",
+      "expect_method": "일반경쟁입찰",
+      "expect_top3": [
+        "SVC_001"
+      ]
+    },
+    {
+      "desc": "용역 8억(국제입찰 임계 초과)",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "service",
+        "estimated_price": 800000000
+      },
+      "expect_rule_id": "SVC_001",
+      "expect_method": "일반경쟁입찰",
+      "expect_top3": [
+        "SVC_001",
+        "SVC_INTL_001"
+      ]
+    },
+    {
+      "desc": "단순노무용역 4000만",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "service",
+        "estimated_price": 40000000,
+        "is_simple_labor": true
+      },
+      "expect_rule_id": "SVC_LABOR_001",
+      "expect_method": "소액수의계약",
+      "expect_top3": [
+        "SVC_LABOR_001",
+        "SVC_002"
+      ]
+    },
+    {
+      "desc": "학술용역 3억",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "service",
+        "estimated_price": 300000000,
+        "service_type": "academic"
+      },
+      "expect_rule_id": "SVC_ACADEMIC_001",
+      "expect_method": "일반경쟁입찰",
+      "expect_top3": [
+        "SVC_ACADEMIC_001",
+        "SVC_001"
+      ]
+    },
+    {
+      "desc": "물품 1500만",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "product",
+        "estimated_price": 15000000
+      },
+      "expect_rule_id": "PRD_005",
+      "expect_method": "소액수의계약",
+      "expect_top3": [
+        "PRD_005"
+      ]
+    },
+    {
+      "desc": "물품 1.5억",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "product",
+        "estimated_price": 150000000
+      },
+      "expect_rule_id": "PRD_003B",
+      "expect_method": "일반경쟁입찰",
+      "expect_top3": [
+        "PRD_003B"
+      ]
+    },
+    {
+      "desc": "중기간제품 8000만",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "product",
+        "estimated_price": 80000000,
+        "is_sme_competition_product": true
+      },
+      "expect_rule_id": "PRD_004",
+      "expect_method": "소기업(소상공인)자간 제한경쟁입찰",
+      "expect_top3": [
+        "PRD_004",
+        "PRD_005",
+        "PRD_SME_PRODUCT_UNDER_100M"
+      ]
+    },
+    {
+      "desc": "중기간제품 3억",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "product",
+        "estimated_price": 300000000,
+        "is_sme_competition_product": true
+      },
+      "expect_rule_id": "PRD_002",
+      "expect_method": "중소기업자간 제한경쟁입찰",
+      "expect_top3": [
+        "PRD_002"
+      ]
+    },
+    {
+      "desc": "물품 7.1억 경계(국제입찰)",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "product",
+        "estimated_price": 710000000
+      },
+      "expect_rule_id": "PRD_006",
+      "expect_method": "국제입찰 (WTO-GPA 적용)",
+      "expect_top3": [
+        "PRD_006",
+        "PRD_001",
+        "PRD_INTL_001"
+      ]
+    },
+    {
+      "desc": "종합공사 4000만",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "construction",
+        "estimated_price": 40000000,
+        "construction_specialty": "general"
+      },
+      "expect_rule_id": "CST_005",
+      "expect_method": "소액수의계약",
+      "expect_top3": [
+        "CST_005"
+      ]
+    },
+    {
+      "desc": "종합공사 2억(고시금액 미만)",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "construction",
+        "estimated_price": 200000000,
+        "construction_specialty": "general"
+      },
+      "expect_rule_id": "CST_005",
+      "expect_method": "소액수의계약",
+      "expect_top3": [
+        "CST_005"
+      ]
+    },
+    {
+      "desc": "종합공사 5억",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "construction",
+        "estimated_price": 500000000,
+        "construction_specialty": "general"
+      },
+      "expect_rule_id": "CST_003",
+      "expect_method": "일반경쟁입찰",
+      "expect_top3": [
+        "CST_003",
+        "CST_004",
+        "CST_007"
+      ]
+    },
+    {
+      "desc": "종합공사 30억",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "construction",
+        "estimated_price": 3000000000,
+        "construction_specialty": "general"
+      },
+      "expect_rule_id": "CST_002",
+      "expect_method": "일반경쟁입찰",
+      "expect_top3": [
+        "CST_002",
+        "CST_007"
+      ]
+    },
+    {
+      "desc": "종합공사 120억(종심제)",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "construction",
+        "estimated_price": 12000000000,
+        "construction_specialty": "general"
+      },
+      "expect_rule_id": "CST_001",
+      "expect_method": null,
+      "expect_top3": [
+        "CST_001"
+      ]
+    },
+    {
+      "desc": "종합공사 300억(PQ)",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "construction",
+        "estimated_price": 30000000000,
+        "construction_specialty": "general",
+        "pq_required": true
+      },
+      "expect_rule_id": "CST_PQ_001",
+      "expect_method": "일반경쟁입찰 (PQ 사전심사)",
+      "expect_top3": [
+        "CST_PQ_001",
+        "CST_001",
+        "CST_INTL_001"
+      ]
+    },
+    {
+      "desc": "전기공사 1.5억(1.6억 이하 수의)",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "construction",
+        "estimated_price": 150000000,
+        "construction_specialty": "electrical"
+      },
+      "expect_rule_id": "CST_ELEC_003",
+      "expect_method": "소액수의계약",
+      "expect_top3": [
+        "CST_ELEC_003"
+      ]
+    },
+    {
+      "desc": "전기공사 1.6억 경계",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "construction",
+        "estimated_price": 160000000,
+        "construction_specialty": "electrical"
+      },
+      "expect_rule_id": "CST_ELEC_002",
+      "expect_method": "일반경쟁입찰",
+      "expect_top3": [
+        "CST_ELEC_002",
+        "CST_ELEC_003"
+      ]
+    },
+    {
+      "desc": "소방공사 3억",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "construction",
+        "estimated_price": 300000000,
+        "construction_specialty": "fire_safety"
+      },
+      "expect_rule_id": "CST_FIRE_001",
+      "expect_method": "일반경쟁입찰",
+      "expect_top3": [
+        "CST_FIRE_001"
+      ]
+    },
+    {
+      "desc": "긴급 수의 용역 3억",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "service",
+        "estimated_price": 300000000,
+        "negotiation_reason": "urgent"
+      },
+      "expect_rule_id": "SVC_NEGO_URGENT",
+      "expect_method": "수의계약 (긴급 필요)",
+      "expect_top3": [
+        "SVC_NEGO_URGENT",
+        "SVC_001"
+      ]
+    },
+    {
+      "desc": "재공고 유찰 물품 2억",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "product",
+        "estimated_price": 200000000,
+        "negotiation_reason": "rebid_failure",
+        "prior_bid_count": 2
+      },
+      "expect_rule_id": "PRD_NEGO_REBID",
+      "expect_method": "수의계약 (재공고 유찰)",
+      "expect_top3": [
+        "PRD_NEGO_REBID",
+        "PRD_003B"
+      ]
+    },
+    {
+      "desc": "특허신기술 공사 5억",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "construction",
+        "estimated_price": 500000000,
+        "construction_specialty": "general",
+        "negotiation_reason": "patent_new_tech"
+      },
+      "expect_rule_id": "CST_NEGO_PATENT",
+      "expect_method": "수의계약 (특허·신기술 보유자)",
+      "expect_top3": [
+        "CST_NEGO_PATENT",
+        "CST_003",
+        "CST_004"
+      ]
+    },
+    {
+      "desc": "지자체 용역 1500만",
+      "org_type": "local",
+      "params": {
+        "contract_type": "service",
+        "estimated_price": 15000000
+      },
+      "expect_rule_id": "LOCAL_SVC_NEGO",
+      "expect_method": "소액수의계약",
+      "expect_top3": [
+        "LOCAL_SVC_NEGO",
+        "SVC_002"
+      ]
+    },
+    {
+      "desc": "지자체 용역 8000만",
+      "org_type": "local",
+      "params": {
+        "contract_type": "service",
+        "estimated_price": 80000000
+      },
+      "expect_rule_id": "LOCAL_SVC_COMP",
+      "expect_method": "일반경쟁입찰",
+      "expect_top3": [
+        "LOCAL_SVC_COMP",
+        "SVC_002"
+      ]
+    },
+    {
+      "desc": "지자체 종합공사 1.5억",
+      "org_type": "local",
+      "params": {
+        "contract_type": "construction",
+        "estimated_price": 150000000,
+        "construction_specialty": "general"
+      },
+      "expect_rule_id": "LOCAL_CST_NEGO_GEN",
+      "expect_method": "소액수의계약",
+      "expect_top3": [
+        "LOCAL_CST_NEGO_GEN",
+        "CST_005"
+      ]
+    },
+    {
+      "desc": "지자체 종합공사 3.5억",
+      "org_type": "local",
+      "params": {
+        "contract_type": "construction",
+        "estimated_price": 350000000,
+        "construction_specialty": "general"
+      },
+      "expect_rule_id": "LOCAL_CST_NEGO_GEN",
+      "expect_method": "소액수의계약",
+      "expect_top3": [
+        "LOCAL_CST_NEGO_GEN",
+        "CST_003",
+        "CST_005"
+      ]
+    },
+    {
+      "desc": "지자체 물품 5000만",
+      "org_type": "local",
+      "params": {
+        "contract_type": "product",
+        "estimated_price": 50000000
+      },
+      "expect_rule_id": "LOCAL_PRD_COMP",
+      "expect_method": "일반경쟁입찰",
+      "expect_top3": [
+        "LOCAL_PRD_COMP",
+        "PRD_005"
+      ]
+    },
+    {
+      "desc": "지자체 긴급 수의 용역 2억",
+      "org_type": "local",
+      "params": {
+        "contract_type": "service",
+        "estimated_price": 200000000,
+        "negotiation_reason": "urgent"
+      },
+      "expect_rule_id": "SVC_NEGO_URGENT",
+      "expect_method": "수의계약 (긴급 필요)",
+      "expect_top3": [
+        "SVC_NEGO_URGENT",
+        "LOCAL_SVC_COMP",
+        "SVC_001"
+      ]
+    },
+    {
+      "desc": "국가기관 용역 3억",
+      "org_type": "national",
+      "params": {
+        "contract_type": "service",
+        "estimated_price": 300000000
+      },
+      "expect_rule_id": "SVC_001",
+      "expect_method": "일반경쟁입찰",
+      "expect_top3": [
+        "SVC_001"
+      ]
+    },
+    {
+      "desc": "국가기관 종합공사 5억",
+      "org_type": "national",
+      "params": {
+        "contract_type": "construction",
+        "estimated_price": 500000000,
+        "construction_specialty": "general"
+      },
+      "expect_rule_id": "CST_003",
+      "expect_method": "일반경쟁입찰",
+      "expect_top3": [
+        "CST_003",
+        "CST_004",
+        "CST_007"
+      ]
+    }
+  ]
+}

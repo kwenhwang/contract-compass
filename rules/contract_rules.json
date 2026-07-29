@@ -1,0 +1,3112 @@
+{
+  "schema_version": "1.0",
+  "last_updated": "2026-07-16",
+  "note": "법령 개정 시 이 파일만 수정 후 POST /api/v1/admin/reload-rules 호출",
+  "_meta": {
+    "priority_layers": {
+      "10-19": "수의계약 사유 (negotiation_reason로 자연 분기 — 7종 × 3유형 = 21룰)",
+      "60-97": "specific 룰 — 정보화·PQ·SVC_GEN_001 등 specialty 분기 룰",
+      "80": "공사 종합·법령공사 5종 — construction_specialty로 자연 분기 (general·electrical·ict·fire_safety·cultural_heritage)",
+      "100-145": "general (메인 결정 룰 — SVC/PRD/CST 일반경쟁·제한경쟁 본체)",
+      "150": "INTL + 중기간 fallback (각자 다른 contract_type 또는 conditions로 자연 분기)",
+      "160-220": "default (모든 메인 매칭 실패 시 fallback — 소액수의·중기간 보조)"
+    },
+    "_note": "동일 priority 룰들은 conditions(주로 construction_specialty/contract_type/negotiation_reason)로 자연 분기됨. tools/audit_determinism.py 12/12 PASS로 충돌 0건 확인. 신규 룰 추가 시 tools/audit_rule_schema.py 실행 권장.",
+    "rule_engine_principle": "결정론적 priority 정렬. 같은 priority 충돌 시 Python sort stable + rule_id 사전순 (tertiary key)으로 보장."
+  },
+  "thresholds": {
+    "petty_1person_upper": 20000000,
+    "petty_contract_upper": 50000000,
+    "sme_small_enterprise_upper": 100000000,
+    "announcement_limit": 230000000,
+    "sme_mandatory_upper": 230000000,
+    "service_pq_threshold": 230000000,
+    "international_bid_service": 710000000,
+    "international_bid_product": 710000000,
+    "service_quality_high": 1000000000,
+    "service_quality_mid": 500000000,
+    "service_quality_low": 210000000
+  },
+  "rules": [
+    {
+      "rule_id": "SVC_INTL_001",
+      "contract_type": "service",
+      "name": "용역 국제입찰 — 7.1억 이상 (공기업 고시금액②, 미적용)",
+      "priority": 150,
+      "_note_2026_06_13": "용역 국제입찰은 추정가격 7.1억 이상이 대상이나 적용 여부는 기관의 WTO GPA 양허 여부에 따라 다름. priority 150으로 SVC_001(100)에 의도적으로 shadowed — 일반경쟁 적격심사를 기본 안내하고 국제입찰은 후순위 후보로 노출. 버그 아님.",
+      "conditions": {
+        "estimated_price_gte": 710000000
+      },
+      "result": {
+        "method": "일반경쟁입찰 (국제입찰 — 외국인 참가 허용)",
+        "bidder_selection": "적격심사 (용역적격심사세부기준)",
+        "pass_score_by_amount": {
+          "gte_1000000000": {
+            "pass_score": 92,
+            "lower_limit_rate": 0.79995,
+            "byeolpyo": "별표1"
+          },
+          "gte_0": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.85495,
+            "byeolpyo": "별표2"
+          }
+        },
+        "procurement_agency": "자체구매 (공고 시 외국인 참가 가능 명시 필수)",
+        "alternatives": [
+          {
+            "method": "일반경쟁입찰 (국내입찰)",
+            "reason": "비양허 기관이거나 국제입찰 예외 사유가 있으면 국내입찰 — 별도 사유 명시 필요.",
+            "kind": "general_domestic"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 제4조 (국제입찰에 따른 정부조달계약의 범위)",
+        "국가계약법 시행령 제2조 제3호 (고시금액 정의)",
+        "기획재정부고시 제2024-42호 (공기업·준정부기관 용역 7.1억원 — 2025.1.1. 적용)",
+        "WTO 정부조달협정(GPA) — 보조 인용"
+      ],
+      "notes": "공기업·준정부기관 용역 추정가격 7.1억원 이상은 국제입찰 대상(기획재정부 고시금액). 실제 적용 여부는 기관의 WTO 정부조달협정(GPA) 양허 여부에 따르므로 소속 기관 확인 필요. 중소기업자간 경쟁제품은 금액과 무관하게 국제입찰 예외.",
+      "source": {
+        "document": "국가계약법 제4조·시행령 제2조 제3호·기획재정부고시 제2024-42호"
+      }
+    },
+    {
+      "rule_id": "PRD_INTL_001",
+      "contract_type": "product",
+      "name": "물품 국제입찰 — 7.1억 이상 (공기업 고시금액②)",
+      "priority": 150,
+      "conditions": {
+        "estimated_price_gte": 710000000
+      },
+      "result": {
+        "method": "일반경쟁입찰 (국제입찰 — 외국인 참가 허용)",
+        "bidder_selection": "적격심사 (물품구매적격심사세부기준)",
+        "pass_score_by_amount": {
+          "gte_0": {
+            "pass_score": 85,
+            "lower_limit_rate": 0.80495,
+            "byeolpyo": "물품 별표1"
+          }
+        },
+        "procurement_agency": "자체구매 또는 조달청 위탁 (공고 시 외국인 참가 가능 명시 필수)",
+        "alternatives": [
+          {
+            "method": "일반경쟁입찰 (국내입찰)",
+            "reason": "중소기업자간 경쟁제품은 금액 무관 국제입찰 예외 (판로지원법). 그 외는 국제입찰 의무.",
+            "kind": "general_domestic"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 제4조 (국제입찰에 따른 정부조달계약의 범위)",
+        "국가계약법 시행령 제2조 제3호 (고시금액 정의)",
+        "기획재정부고시 제2024-42호 (공기업·준정부기관 물품 7.1억원 — 2025.1.1. 적용)",
+        "WTO 정부조달협정(GPA) — 보조 인용"
+      ],
+      "notes": "공기업·준정부기관 물품 7.1억원 이상은 국제입찰 대상(기획재정부 고시금액). 실제 적용 여부는 기관의 WTO GPA 양허 여부에 따름. 중기간 경쟁제품은 예외.",
+      "source": {
+        "document": "국가계약법 제4조·시행령 제2조 제3호·기획재정부고시 제2024-42호"
+      }
+    },
+    {
+      "rule_id": "CST_INTL_001",
+      "contract_type": "construction",
+      "name": "공사 국제입찰 — 265억 이상 (공기업 고시금액②)",
+      "priority": 150,
+      "conditions": {
+        "estimated_price_gte": 26500000000
+      },
+      "result": {
+        "method": "일반경쟁입찰 (국제입찰 — 외국인 참가 허용)",
+        "bidder_selection": "종합심사낙찰제",
+        "pass_score_by_amount": {
+          "gte_0": {
+            "pass_score": null,
+            "lower_limit_rate": 0.87495,
+            "schedule": "종합심사낙찰제 (시행령 제42조 제4항)"
+          }
+        },
+        "procurement_agency": "자체구매 (공고 시 외국인 참가 가능 명시 필수)",
+        "alternatives": [
+          {
+            "method": "일반경쟁입찰 (국내입찰)",
+            "reason": "265억 이상 공사는 국제입찰 의무(양허기관 기준) — 국내입찰 시 별도 사유 명시 필요.",
+            "kind": "general_domestic"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 제4조 (국제입찰에 따른 정부조달계약의 범위)",
+        "국가계약법 시행령 제2조 제3호 (고시금액 정의)",
+        "기획재정부고시 제2024-42호 (공기업·준정부기관 공사 265억원 — 2025.1.1. 적용)",
+        "WTO 정부조달협정(GPA) — 보조 인용"
+      ],
+      "notes": "공기업·준정부기관 공사 추정가격 265억원 이상은 국제입찰 대상(기획재정부 고시금액). 실제 적용 여부는 기관의 WTO GPA 양허 여부에 따름. 종합심사낙찰제 적용 (100억 이상 PQ 대상).",
+      "source": {
+        "document": "국가계약법 제4조·시행령 제2조 제3호·기획재정부고시 제2024-42호"
+      }
+    },
+    {
+      "rule_id": "SVC_001",
+      "contract_type": "service",
+      "name": "용역 일반경쟁(적격심사) — 1억 이상",
+      "priority": 100,
+      "conditions": {
+        "estimated_price_gte": 100000000
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사",
+        "pass_score_by_amount": {
+          "gte_1000000000": {
+            "pass_score": 92,
+            "lower_limit_rate": 0.79995,
+            "byeolpyo": "별표1"
+          },
+          "gte_500000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.85495,
+            "byeolpyo": "별표2"
+          },
+          "gte_230000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.86745,
+            "byeolpyo": "별표3"
+          },
+          "gte_0": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.87745,
+            "byeolpyo": "별표4"
+          }
+        },
+        "procurement_agency": "자체구매 (또는 조달청 위탁 가능 — 다수공급자계약·제3자단가계약·구매위탁 등)",
+        "alternatives": [
+          {
+            "method": "수의계약(시담)",
+            "reason": "감리·진단·컨설팅·연구 전문성·재공고 유찰 등 사유 시",
+            "kind": "negotiated"
+          }
+        ],
+        "bidder_options": [
+          {
+            "bidder": "협상",
+            "reason": "정보시스템·SW·창의력 요구 용역 — 시행령 제43조(협상에 의한 계약)",
+            "kind": "negotiated_bidder",
+            "law_basis": "국가계약법 시행령 제43조"
+          }
+        ]
+      },
+      "legal_basis": [
+        "국가계약법 제7조 (경쟁의 원칙)",
+        "국가계약법 시행령 제42조 (적격심사)",
+        "용역적격심사세부기준",
+        "국가계약법 시행령 제43조 (협상에 의한 계약)"
+      ],
+      "notes": "기술용역 기준. 10억이상: 92점/79.995%, 10억미만: 95점. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
+      "source": {
+        "document": "적격심사기준(기획재정부 계약예규)·발주기관별 적격심사 세부기준"
+      }
+    },
+    {
+      "rule_id": "SVC_LABOR_001",
+      "contract_type": "service",
+      "name": "단순노무용역 소액수의 (1억 이하, 경비·청소·시설물관리 등)",
+      "priority": 195,
+      "conditions": {
+        "is_simple_labor": true,
+        "estimated_price_lte": 100000000
+      },
+      "result": {
+        "method": "소액수의계약",
+        "bidder_selection": "견적에 의한 수의계약",
+        "electronic_required_gt": 20000000,
+        "lower_limit_rate": 0.89995,
+        "min_quotes": 2,
+        "notes_on_amount": "단순노무용역(시행규칙 제23조의3): 경비·청소·시설물관리 등. 소액수의 낙찰하한율 89.995% (일반 용역 87.995%와 구분).",
+        "alternatives": [
+          {
+            "method": "일반경쟁입찰",
+            "reason": "특수기술/조달 사유 부재 시 일반경쟁 기본",
+            "kind": "general_competitive"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제5호 (소액수의)",
+        "국가계약법 시행규칙 제23조의3 (단순노무용역)"
+      ],
+      "notes": "단순노무용역 소액수의 최저투찰율 89.995% (일반 용역 87.995%와 구분). 근거: 시행규칙 제23조의3(단순노무용역)·조달청 소액수의계약(전자견적) 최저투찰율 기준. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
+      "source": {
+        "document": "조달청 소액수의계약(전자견적) 최저투찰율 기준"
+      }
+    },
+    {
+      "rule_id": "SVC_002",
+      "contract_type": "service",
+      "name": "용역 소액수의/소액전자 (1억 이하)",
+      "priority": 200,
+      "conditions": {
+        "estimated_price_lte": 100000000
+      },
+      "result": {
+        "method": "소액수의계약",
+        "bidder_selection": "견적에 의한 수의계약",
+        "electronic_required_gt": 20000000,
+        "lower_limit_rate": 0.87995,
+        "min_quotes": 2,
+        "notes_on_amount": "2천만원 초과: 전자조달시스템 견적 필수, 2천만원 이하: 1인 견적 가능(소기업·소상공인 등은 5천만원 이하) — 시행령 제30조",
+        "alternatives": [
+          {
+            "method": "일반경쟁입찰",
+            "reason": "특수기술/조달 사유 부재 시 일반경쟁 기본",
+            "kind": "general_competitive"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제5호 (소액수의)",
+        "계약사무규칙 제8조"
+      ],
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제5호"
+      }
+    },
+    {
+      "rule_id": "SVC_003",
+      "contract_type": "service",
+      "name": "용역 제한경쟁 — 지역제한",
+      "priority": 150,
+      "conditions": {
+        "estimated_price_lt": 230000000,
+        "estimated_price_gte": 100000000,
+        "regional_restriction": true
+      },
+      "result": {
+        "method": "제한경쟁입찰 (지역제한)",
+        "restriction_type": "regional",
+        "restriction_area": "주된 영업소 소재지 시·도 단위",
+        "bidder_selection": "적격심사",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제21조 제1항 제6호"
+      ],
+      "notes": "추정가격 고시금액(2.3억) 미만에서만 지역제한 가능",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제21조 제1항 제6호"
+      }
+    },
+    {
+      "rule_id": "SVC_004",
+      "contract_type": "service",
+      "name": "용역 제한경쟁 — 중소기업자간 경쟁 (고시금액 미만)",
+      "priority": 160,
+      "conditions": {
+        "estimated_price_lt": 230000000,
+        "estimated_price_gte": 100000000,
+        "is_sme_mandatory": true
+      },
+      "result": {
+        "method": "제한경쟁입찰 (중소기업자간 경쟁)",
+        "restriction_type": "sme",
+        "bidder_selection": "적격심사",
+        "alternatives": [
+          {
+            "method": "제한경쟁 — 소기업·소상공인",
+            "reason": "소상공인 보호법 제16조 — 일부 용역 적용 가능",
+            "kind": "small_business_restricted"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "중소기업제품 구매촉진 및 판로지원에 관한 법률 제7조",
+        "국가계약법 시행령 제21조 제1항 제8호"
+      ],
+      "source": {
+        "document": "중소기업제품 구매촉진 및 판로지원에 관한 법률",
+        "page": null,
+        "paragraph": "제7조"
+      }
+    },
+    {
+      "rule_id": "SVC_SMALL_BIZ_001",
+      "contract_type": "service",
+      "name": "용역 제한경쟁 — 소기업/소상공인 (5천만~1억)",
+      "priority": 150,
+      "conditions": {
+        "estimated_price_gte": 50000000,
+        "estimated_price_lt": 100000000,
+        "small_enterprise_restriction": true
+      },
+      "result": {
+        "method": "소기업(소상공인)자간 제한경쟁입찰",
+        "restriction_type": "small_enterprise",
+        "bidder_selection": "적격심사",
+        "pass_score": 85,
+        "lower_limit_rate": 0.87745,
+        "alternatives": [
+          {
+            "method": "소액수의계약",
+            "reason": "1억 미만 용역은 소액수의 가능",
+            "kind": "small_negotiated_under_100m"
+          },
+          {
+            "method": "일반경쟁입찰",
+            "reason": "소기업·소상공인 제한 사유 부재 시 일반경쟁",
+            "kind": "general_competitive"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "중소기업제품 구매촉진 및 판로지원에 관한 법률 제7조",
+        "판로지원법 시행령 제2조의2",
+        "소상공인 보호 및 지원에 관한 법률"
+      ],
+      "notes": "물품 PRD_004(소기업·소상공인)의 용역 대응 룰. small_enterprise_restriction=true일 때만 매칭(미지정 시 SVC_002 소액수의 유지).",
+      "source": {
+        "document": "중소기업제품 구매촉진 및 판로지원에 관한 법률·소상공인 보호법",
+        "page": null,
+        "paragraph": "제7조·시행령 제2조의2"
+      }
+    },
+    {
+      "rule_id": "SVC_007",
+      "contract_type": "service",
+      "name": "용역 일반경쟁입찰 (고시금액 미만, 기본)",
+      "priority": 190,
+      "conditions": {
+        "estimated_price_lt": 230000000,
+        "estimated_price_gte": 100000000
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사",
+        "pass_score": 95,
+        "lower_limit_rate": 0.87745,
+        "notes_on_restriction": "지역제한·중소기업자간 경쟁 등 제한경쟁 적용 가능 여부 별도 검토",
+        "alternatives": [
+          {
+            "method": "제한경쟁 — 소기업·소상공인",
+            "reason": "고시금액 미만 일반용역 — 소상공인 보호 및 지원에 관한 법률 제16조에 따라 제한 가능",
+            "kind": "small_business_restricted"
+          },
+          {
+            "method": "소액전자(수의견적)",
+            "reason": "5천만원 미만 용역 견적",
+            "kind": "small_negotiated_electronic"
+          },
+          {
+            "method": "수의계약(시담)",
+            "reason": "감리·진단·컨설팅·연구 등 전문성 사유 시",
+            "kind": "negotiated"
+          },
+          {
+            "method": "지명경쟁입찰",
+            "reason": "특수기술·실적 등 지명 사유 시",
+            "kind": "designated_competitive"
+          },
+          {
+            "method": "제한경쟁 — 엔지니어링활동주체 / 기술사사무소",
+            "reason": "감리·진단·검토 용역 — 엔지니어링산업진흥법 제21조 (활동주체 신고·기술사사무소 등록)",
+            "kind": "engineering_restricted"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 제7조 (경쟁의 원칙)",
+        "국가계약법 시행령 제42조 (적격심사)",
+        "용역적격심사세부기준 제2조 (적용범위)·제11조 (낙찰자 결정)"
+      ],
+      "notes": "5천만원 이상 ~ 고시금액(2.3억) 미만 기술용역. 95점/87.745%. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
+      "source": {
+        "document": "적격심사기준(기획재정부 계약예규)·발주기관별 적격심사 세부기준"
+      }
+    },
+    {
+      "rule_id": "SVC_005",
+      "contract_type": "service",
+      "name": "용역 일반경쟁 + 협상에 의한 낙찰자결정",
+      "priority": 110,
+      "conditions": {
+        "estimated_price_gte": 230000000,
+        "negotiation_contract": true
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "tech_eval_ratio": 0.8,
+        "price_eval_ratio": 0.2,
+        "pass_threshold": 0.85,
+        "bidder_selection": "협상",
+        "bidder_options": [
+          {
+            "bidder": "협상",
+            "reason": "IT·SW·창의·전문분야 — 시행령 제43조",
+            "kind": "negotiated_bidder",
+            "law_basis": "국가계약법 시행령 제43조"
+          }
+        ],
+        "alternatives": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제43조",
+        "협상에 의한 계약체결기준"
+      ],
+      "notes": "고도기술, 특수목적 용역에 적용. 기술제안서 평가 필요 시",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제43조"
+      }
+    },
+    {
+      "rule_id": "SVC_006",
+      "contract_type": "service",
+      "name": "용역 PQ (입찰참가자격사전심사)",
+      "priority": 90,
+      "conditions": {
+        "estimated_price_gte": 230000000,
+        "pq_required": true,
+        "service_type": "technical"
+      },
+      "result": {
+        "method": "일반경쟁입찰 (PQ 사전심사)",
+        "pq_notice_period_days": 17,
+        "bidder_selection": "적격심사",
+        "pass_score": 95,
+        "lower_limit_rate": 0.86745,
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제13조 (사전심사)",
+        "건설기술진흥법 제39조 (건설기술용역 PQ)",
+        "엔지니어링산업진흥법 제22조 (엔지니어링 PQ)"
+      ],
+      "notes": "건설기술·엔지니어링 용역으로 고시금액(2.3억) 이상 시 PQ 의무. pq_required=true로 전달 시 매칭.",
+      "source": {
+        "document": "건설기술진흥법·엔지니어링산업진흥법",
+        "page": null,
+        "paragraph": "PQ 사전심사"
+      }
+    },
+    {
+      "rule_id": "SVC_IT_001",
+      "contract_type": "service",
+      "name": "정보화사업 일반경쟁입찰 (고시금액 이상)",
+      "priority": 95,
+      "conditions": {
+        "estimated_price_gte": 230000000,
+        "service_type": "it_service"
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사",
+        "pass_score_by_amount": {
+          "gte_1000000000": {
+            "pass_score": 92,
+            "lower_limit_rate": 0.79995
+          },
+          "gte_500000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.85495
+          },
+          "gte_210000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.86745
+          }
+        },
+        "sw_developer_required": true,
+        "separate_ordering_gte": 500000000,
+        "large_corp_restriction_lt": 4000000000,
+        "procurement_agency": "자체구매 (또는 조달청 위탁 가능)",
+        "alternatives": [
+          {
+            "method": "중소기업자간 제한경쟁입찰 (대기업 참여 제한)",
+            "reason": "SW 진흥법 제48조 — 소프트웨어 사업 대기업 참여 제한 (예외 검토 필요)",
+            "kind": "sw_big_company_restricted"
+          }
+        ],
+        "bidder_options": [
+          {
+            "bidder": "협상",
+            "reason": "IT·SW사업 일반적 — 시행령 제43조 협상에 의한 계약체결",
+            "kind": "negotiated_bidder",
+            "law_basis": "국가계약법 시행령 제43조"
+          }
+        ]
+      },
+      "legal_basis": [
+        "소프트웨어 진흥법 제47조 (소프트웨어사업자 신고)",
+        "소프트웨어 진흥법 제48조 (분리발주)",
+        "소프트웨어 진흥법 제24조의2 (대기업 참여 제한)",
+        "국가계약법 제7조",
+        "국가계약법 시행령 제42조 (적격심사)",
+        "용역적격심사세부기준 제2조 (적용범위)·제11조 (낙찰자 결정)"
+      ],
+      "notes": "SW사업자 신고업체만 입찰 가능. 5억 이상: SW·HW 분리발주 의무. 40억 미만: 중소기업·중견기업만 참여 가능.",
+      "source": {
+        "document": "소프트웨어 진흥법",
+        "page": null,
+        "paragraph": "제47조·제48조·제24조의2"
+      }
+    },
+    {
+      "rule_id": "SVC_IT_002",
+      "contract_type": "service",
+      "name": "정보화사업 제한경쟁 (고시금액 미만)",
+      "priority": 145,
+      "conditions": {
+        "estimated_price_lt": 230000000,
+        "estimated_price_gte": 50000000,
+        "service_type": "it_service"
+      },
+      "result": {
+        "method": "제한경쟁입찰",
+        "restriction_type": "sw_developer",
+        "bidder_selection": "적격심사",
+        "sw_developer_required": true,
+        "large_corp_restriction_lt": 4000000000,
+        "alternatives": [
+          {
+            "method": "중소기업자간 제한경쟁입찰 (대기업 참여 제한)",
+            "reason": "SW 진흥법 제48조 — 소프트웨어 사업 대기업 참여 제한 (예외 검토 필요)",
+            "kind": "sw_big_company_restricted"
+          }
+        ],
+        "bidder_options": [
+          {
+            "bidder": "협상",
+            "reason": "IT·SW사업 일반적 — 시행령 제43조 협상에 의한 계약체결",
+            "kind": "negotiated_bidder",
+            "law_basis": "국가계약법 시행령 제43조"
+          }
+        ]
+      },
+      "legal_basis": [
+        "소프트웨어 진흥법 제47조",
+        "소프트웨어 진흥법 제24조의2",
+        "국가계약법 시행령 제21조",
+        "용역적격심사세부기준 제2조 (적용범위)·제11조 (낙찰자 결정)"
+      ],
+      "notes": "SW사업자 신고업체로 참가자격 제한. 40억 미만이므로 대기업 참여 제한 적용.",
+      "source": {
+        "document": "소프트웨어 진흥법",
+        "page": null,
+        "paragraph": "제47조·제24조의2"
+      }
+    },
+    {
+      "rule_id": "SVC_IT_003",
+      "contract_type": "service",
+      "name": "정보화사업 일반경쟁 + 협상에 의한 낙찰자결정",
+      "priority": 108,
+      "conditions": {
+        "estimated_price_gte": 230000000,
+        "service_type": "it_service",
+        "negotiation_contract": true
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "tech_eval_ratio": 0.8,
+        "price_eval_ratio": 0.2,
+        "pass_threshold": 0.85,
+        "bidder_selection": "협상",
+        "sw_developer_required": true,
+        "bidder_options": [
+          {
+            "bidder": "협상",
+            "reason": "IT·SW·창의·전문분야 — 시행령 제43조",
+            "kind": "negotiated_bidder",
+            "law_basis": "국가계약법 시행령 제43조"
+          }
+        ],
+        "alternatives": []
+      },
+      "legal_basis": [
+        "소프트웨어 진흥법 제47조",
+        "국가계약법 시행령 제43조 (협상에 의한 계약)",
+        "협상에 의한 계약체결기준"
+      ],
+      "notes": "복잡한 정보시스템 구축·AI·클라우드 사업 등 기술 중요도 높은 경우 적용",
+      "source": {
+        "document": "국가계약법 시행령·소프트웨어 진흥법",
+        "page": null,
+        "paragraph": "제43조, 제47조"
+      }
+    },
+    {
+      "rule_id": "SVC_GEN_001",
+      "contract_type": "service",
+      "name": "일반용역 일반경쟁입찰 (고시금액 이상)",
+      "priority": 97,
+      "conditions": {
+        "estimated_price_gte": 230000000,
+        "service_type": "other"
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사",
+        "pass_score_by_amount": {
+          "gte_1000000000": {
+            "pass_score": 85,
+            "lower_limit_rate": 0.72995,
+            "byeolpyo": "별표7의1"
+          },
+          "gte_500000000": {
+            "pass_score": 85,
+            "lower_limit_rate": 0.80495,
+            "byeolpyo": "별표7의2"
+          },
+          "gte_230000000": {
+            "pass_score": 85,
+            "lower_limit_rate": 0.82995,
+            "byeolpyo": "별표7의3"
+          },
+          "gte_0": {
+            "pass_score": 85,
+            "lower_limit_rate": 0.84995,
+            "byeolpyo": "별표8"
+          }
+        },
+        "procurement_agency": "자체구매 (또는 조달청 위탁 가능 — 다수공급자계약·제3자단가계약·구매위탁 등)",
+        "alternatives": [
+          {
+            "method": "제한경쟁 — 엔지니어링활동주체 / 기술사사무소",
+            "reason": "감리·진단·검토 용역 — 엔지니어링산업진흥법 제21조 (활동주체 신고·기술사사무소 등록)",
+            "kind": "engineering_restricted"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 제7조 (경쟁의 원칙)",
+        "국가계약법 시행령 제42조 (적격심사)",
+        "용역적격심사세부기준 [별표 기타]"
+      ],
+      "notes": "일반용역(비기술) 기준. 85점. 10억이상=72.995%, 5억~10억=80.495%, 고시금액~5억=82.995%. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
+      "source": {
+        "document": "적격심사기준(기획재정부 계약예규)·발주기관별 적격심사 세부기준"
+      }
+    },
+    {
+      "rule_id": "SVC_GEN_002",
+      "contract_type": "service",
+      "name": "일반용역 일반경쟁(적격심사) (1억~2.3억, 고시금액 미만)",
+      "priority": 96,
+      "conditions": {
+        "estimated_price_lt": 230000000,
+        "estimated_price_gte": 100000000,
+        "service_type": "other",
+        "small_enterprise_restriction": false
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사",
+        "pass_score": 85,
+        "lower_limit_rate": 0.84995,
+        "alternatives": [
+          {
+            "method": "제한경쟁 — 엔지니어링활동주체 / 기술사사무소",
+            "reason": "감리·진단·검토 용역 — 엔지니어링산업진흥법 제21조 (활동주체 신고·기술사사무소 등록)",
+            "kind": "engineering_restricted"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 제7조 (경쟁의 원칙)",
+        "국가계약법 시행령 제42조 (적격심사)",
+        "용역적격심사세부기준 [별표 기타]"
+      ],
+      "notes": "일반용역(비기술) 고시금액 미만. 85점/84.995%. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
+      "source": {
+        "document": "적격심사기준(기획재정부 계약예규)·발주기관별 적격심사 세부기준"
+      }
+    },
+    {
+      "rule_id": "SVC_ACADEMIC_001",
+      "contract_type": "service",
+      "name": "학술연구용역 일반경쟁(적격심사)",
+      "priority": 96,
+      "conditions": {
+        "service_type": "academic",
+        "estimated_price_gte": 100000000,
+        "estimated_price_lt": 710000000
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사",
+        "pass_score": 85,
+        "lower_limit_rate": 0.80495,
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 제7조 (경쟁의 원칙)",
+        "국가계약법 시행령 제42조 (적격심사)",
+        "용역적격심사세부기준 [별표5 학술연구]"
+      ],
+      "notes": "학술연구용역 적격심사 통과점수 85점, 낙찰하한율 80.495%. SVC_001(기술용역 95점) 오적용 방지. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
+      "source": {
+        "document": "적격심사기준(기획재정부 계약예규)·발주기관별 적격심사 세부기준"
+      }
+    },
+    {
+      "rule_id": "SVC_FACILITY_001",
+      "contract_type": "service",
+      "name": "시설분야용역 일반경쟁(적격심사)",
+      "priority": 96,
+      "conditions": {
+        "service_type": "facility",
+        "estimated_price_gte": 100000000,
+        "estimated_price_lt": 710000000
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사",
+        "pass_score": 85,
+        "lower_limit_rate": 0.87995,
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 제7조 (경쟁의 원칙)",
+        "국가계약법 시행령 제42조 (적격심사)",
+        "용역적격심사세부기준 [별표6 시설분야]"
+      ],
+      "notes": "시설분야용역 적격심사 통과점수 85점, 낙찰하한율 87.995%(91/100 기준). SVC_001(기술용역 95점) 오적용 방지. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
+      "source": {
+        "document": "적격심사기준(기획재정부 계약예규)·발주기관별 적격심사 세부기준"
+      }
+    },
+    {
+      "rule_id": "SVC_NEGO_REBID",
+      "contract_type": "service",
+      "name": "용역 재공고 유찰 수의계약",
+      "priority": 10,
+      "conditions": {
+        "negotiation_reason": "rebid_failure",
+        "prior_bid_count_gte": 1
+      },
+      "result": {
+        "method": "수의계약 (재공고 유찰)",
+        "bidder_selection": "수의 (재공고 결과 입찰자 없거나 적격자 없음)",
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제27조 (재공고입찰과 수의계약)"
+      ],
+      "notes": "공고를 1회 이상 실시 후 유찰된 경우 적용. 직전 공고와 동일한 조건으로 진행. 출처: 시행령 제27조.",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제27조"
+      }
+    },
+    {
+      "rule_id": "SVC_NEGO_URGENT",
+      "contract_type": "service",
+      "name": "용역 긴급 필요 수의계약",
+      "priority": 11,
+      "conditions": {
+        "negotiation_reason": "urgent"
+      },
+      "result": {
+        "method": "수의계약 (긴급 필요)",
+        "bidder_selection": "수의 (재난·재해·보안 등 긴급 사유)",
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제1호 (천재지변·긴급 등 경쟁에 부칠 여유 없는 경우)",
+        "국가계약법 시행령 제26조 제2항 (긴급사유 정당화 입증)"
+      ],
+      "notes": "재난·재해·보안·국가시책 등 긴급 사유. 사유서·결재 증빙 필수. 출처: 시행령 제26조 1항 1호.",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제1호"
+      }
+    },
+    {
+      "rule_id": "PRD_NEGO_REBID",
+      "contract_type": "product",
+      "name": "물품 재공고 유찰 수의계약",
+      "priority": 10,
+      "conditions": {
+        "negotiation_reason": "rebid_failure",
+        "prior_bid_count_gte": 1
+      },
+      "result": {
+        "method": "수의계약 (재공고 유찰)",
+        "bidder_selection": "수의 (재공고 결과 입찰자 없거나 적격자 없음)",
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제27조 (재공고입찰과 수의계약)"
+      ],
+      "notes": "공고 1회 이상 후 유찰. 출처: 시행령 제27조.",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제27조"
+      }
+    },
+    {
+      "rule_id": "PRD_NEGO_URGENT",
+      "contract_type": "product",
+      "name": "물품 긴급 필요 수의계약",
+      "priority": 11,
+      "conditions": {
+        "negotiation_reason": "urgent"
+      },
+      "result": {
+        "method": "수의계약 (긴급 필요)",
+        "bidder_selection": "수의 (재난·재해·보안 등 긴급 사유)",
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제1호 (천재지변·긴급 등 경쟁에 부칠 여유 없는 경우)",
+        "국가계약법 시행령 제26조 제2항 (긴급사유 정당화 입증)"
+      ],
+      "notes": "긴급 사유. 사유서·결재 증빙 필수. 출처: 시행령 제26조 1항 1호.",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제1호"
+      }
+    },
+    {
+      "rule_id": "CST_NEGO_REBID",
+      "contract_type": "construction",
+      "name": "공사 재공고 유찰 수의계약",
+      "priority": 10,
+      "conditions": {
+        "negotiation_reason": "rebid_failure",
+        "prior_bid_count_gte": 1
+      },
+      "result": {
+        "method": "수의계약 (재공고 유찰)",
+        "bidder_selection": "수의 (재공고 결과 입찰자 없거나 적격자 없음)",
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제27조 (재공고입찰과 수의계약)"
+      ],
+      "notes": "공고 1회 이상 후 유찰. 출처: 시행령 제27조.",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제27조"
+      }
+    },
+    {
+      "rule_id": "CST_NEGO_URGENT",
+      "contract_type": "construction",
+      "name": "공사 긴급 필요 수의계약",
+      "priority": 11,
+      "conditions": {
+        "negotiation_reason": "urgent"
+      },
+      "result": {
+        "method": "수의계약 (긴급 필요)",
+        "bidder_selection": "수의 (재난·재해·보안 등 긴급 사유)",
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제1호 (천재지변·긴급 등 경쟁에 부칠 여유 없는 경우)",
+        "국가계약법 시행령 제26조 제2항 (긴급사유 정당화 입증)"
+      ],
+      "notes": "긴급 사유. 사유서·결재 증빙 필수. 출처: 시행령 제26조 1항 1호.",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제1호"
+      }
+    },
+    {
+      "rule_id": "SVC_NEGO_TECH",
+      "contract_type": "service",
+      "name": "용역 기술 곤란·불가분 수의계약",
+      "priority": 12,
+      "conditions": {
+        "negotiation_reason": "technical_difficulty"
+      },
+      "result": {
+        "method": "수의계약 (기술적 곤란·불가분)",
+        "bidder_selection": "수의 (경쟁입찰 부적합 사유 명시)",
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제2호 (특정인의 기술이 필요하거나 경쟁이 성립될 수 없는 경우)"
+      ],
+      "notes": "특정 사업자만 수행 가능한 기술 또는 분리 발주 불가능한 작업. 사유 입증서 필수.",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제2호"
+      }
+    },
+    {
+      "rule_id": "SVC_NEGO_PATENT",
+      "contract_type": "service",
+      "name": "용역 특허·신기술 수의계약",
+      "priority": 13,
+      "conditions": {
+        "negotiation_reason": "patent_new_tech"
+      },
+      "result": {
+        "method": "수의계약 (특허·신기술 보유자)",
+        "bidder_selection": "수의 (특허·실용신안·디자인·신기술 보유자)",
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제2호 (특정인의 기술이 필요하거나 경쟁이 성립될 수 없는 경우)"
+      ],
+      "notes": "특허·실용신안·디자인·신기술 보유자. 권리 입증서류 필수.",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제2호"
+      }
+    },
+    {
+      "rule_id": "SVC_NEGO_SPECIFIC",
+      "contract_type": "service",
+      "name": "용역 특정인 수의계약",
+      "priority": 14,
+      "conditions": {
+        "negotiation_reason": "specific_person"
+      },
+      "result": {
+        "method": "수의계약 (특정인)",
+        "bidder_selection": "수의 (법령 또는 정책상 특정인 대상 사업)",
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제2호 (특정인의 기술이 필요하거나 경쟁이 성립될 수 없는 경우)"
+      ],
+      "notes": "법령 또는 정책상 특정 사업자(예: 장애인기업, 사회적기업, 공공기관 등). 근거 법령 명시 필수.",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제2호"
+      }
+    },
+    {
+      "rule_id": "SVC_NEGO_SMALL_REPEAT",
+      "contract_type": "service",
+      "name": "용역 소액 수의계약",
+      "priority": 15,
+      "conditions": {
+        "negotiation_reason": "small_repeat"
+      },
+      "result": {
+        "method": "수의계약 (소액)",
+        "bidder_selection": "수의 (소액 — 경쟁 비효율)",
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제5호 (경쟁에 따라 계약하는 것이 비효율적인 경우)"
+      ],
+      "notes": "추정가격 소액 기준 등 경쟁에 따라 계약하는 것이 비효율적인 경우(시행령 제26조 제1항 제5호 각 목). 동일업체 반복 수의계약은 사유가 아니라 통제 대상(쪼개기·일감몰아주기 점검).",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제5호"
+      }
+    },
+    {
+      "rule_id": "SVC_NEGO_OTHER",
+      "contract_type": "service",
+      "name": "용역 기타 정당화 수의계약",
+      "priority": 16,
+      "conditions": {
+        "negotiation_reason": "other_justified"
+      },
+      "result": {
+        "method": "수의계약 (기타 정당화)",
+        "bidder_selection": "수의 (개별 정당화 사유 명시)",
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제5호 (경쟁에 따라 계약하는 것이 비효율적인 경우)"
+      ],
+      "notes": "위 각 호에 해당하지 않으나 별도 정당화 사유가 있는 경우. 사유서 필수.",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제5호"
+      }
+    },
+    {
+      "rule_id": "SVC_NEGOT_001",
+      "contract_type": "service",
+      "name": "용역 일반경쟁 + 협상에 의한 낙찰자결정 (SW·창의·전문분야)",
+      "priority": 60,
+      "conditions": {
+        "negotiation_contract": true
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "협상",
+        "procurement_agency": "자체구매",
+        "bidder_options": [
+          {
+            "bidder": "협상",
+            "reason": "IT·SW·창의·전문분야 — 시행령 제43조",
+            "kind": "negotiated_bidder",
+            "law_basis": "국가계약법 시행령 제43조"
+          }
+        ],
+        "alternatives": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제43조 (협상에 의한 계약)",
+        "계약예규 협상에의한계약체결기준"
+      ],
+      "notes": "SW개발·창의적 사업·전문분야 등 기술력 평가 우선 필요 시. 제안서 평가 후 협상 진행.",
+      "source": {
+        "document": "국가계약법 시행령·계약예규",
+        "page": null,
+        "paragraph": "제43조, 협상에의한계약체결기준"
+      }
+    },
+    {
+      "rule_id": "PRD_NEGO_TECH",
+      "contract_type": "product",
+      "name": "물품 기술 곤란·불가분 수의계약",
+      "priority": 12,
+      "conditions": {
+        "negotiation_reason": "technical_difficulty"
+      },
+      "result": {
+        "method": "수의계약 (기술적 곤란·불가분)",
+        "bidder_selection": "수의 (경쟁입찰 부적합 사유 명시)",
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제2호 (특정인의 기술이 필요하거나 경쟁이 성립될 수 없는 경우)"
+      ],
+      "notes": "특정 사업자만 공급 가능한 물품 또는 호환성·일관성 사유.",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제2호"
+      }
+    },
+    {
+      "rule_id": "PRD_NEGO_PATENT",
+      "contract_type": "product",
+      "name": "물품 특허·신기술 수의계약",
+      "priority": 13,
+      "conditions": {
+        "negotiation_reason": "patent_new_tech"
+      },
+      "result": {
+        "method": "수의계약 (특허·신기술 보유자)",
+        "bidder_selection": "수의 (특허·실용신안·디자인·신기술 보유자)",
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제2호 (특정인의 기술이 필요하거나 경쟁이 성립될 수 없는 경우)"
+      ],
+      "notes": "특허·실용신안·디자인·신기술 보유 물품.",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제2호"
+      }
+    },
+    {
+      "rule_id": "PRD_NEGO_SPECIFIC",
+      "contract_type": "product",
+      "name": "물품 특정인 수의계약",
+      "priority": 14,
+      "conditions": {
+        "negotiation_reason": "specific_person"
+      },
+      "result": {
+        "method": "수의계약 (특정인)",
+        "bidder_selection": "수의 (법령 또는 정책상 특정인 대상 사업)",
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제2호 (특정인의 기술이 필요하거나 경쟁이 성립될 수 없는 경우)"
+      ],
+      "notes": "법령 또는 정책상 특정 공급자 대상.",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제2호"
+      }
+    },
+    {
+      "rule_id": "PRD_NEGO_SMALL_REPEAT",
+      "contract_type": "product",
+      "name": "물품 소액 수의계약",
+      "priority": 15,
+      "conditions": {
+        "negotiation_reason": "small_repeat"
+      },
+      "result": {
+        "method": "수의계약 (소액)",
+        "bidder_selection": "수의 (소액 — 경쟁 비효율)",
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제5호 (경쟁에 따라 계약하는 것이 비효율적인 경우)"
+      ],
+      "notes": "추정가격 소액 기준 등 경쟁에 따라 계약하는 것이 비효율적인 경우(시행령 제26조 제1항 제5호 각 목). 동일업체 반복 수의계약은 사유가 아니라 통제 대상(쪼개기·일감몰아주기 점검).",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제5호"
+      }
+    },
+    {
+      "rule_id": "PRD_NEGO_OTHER",
+      "contract_type": "product",
+      "name": "물품 기타 정당화 수의계약",
+      "priority": 16,
+      "conditions": {
+        "negotiation_reason": "other_justified"
+      },
+      "result": {
+        "method": "수의계약 (기타 정당화)",
+        "bidder_selection": "수의 (개별 정당화 사유 명시)",
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제5호 (경쟁에 따라 계약하는 것이 비효율적인 경우)"
+      ],
+      "notes": "위 각 호에 해당하지 않으나 별도 정당화 사유가 있는 경우.",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제5호"
+      }
+    },
+    {
+      "rule_id": "CST_NEGO_TECH",
+      "contract_type": "construction",
+      "name": "공사 기술 곤란·불가분 수의계약",
+      "priority": 12,
+      "conditions": {
+        "negotiation_reason": "technical_difficulty"
+      },
+      "result": {
+        "method": "수의계약 (기술적 곤란·불가분)",
+        "bidder_selection": "수의 (경쟁입찰 부적합 사유 명시)",
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제2호 (특정인의 기술이 필요하거나 경쟁이 성립될 수 없는 경우)"
+      ],
+      "notes": "특정 사업자만 시공 가능 또는 분리 발주 불가능.",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제2호"
+      }
+    },
+    {
+      "rule_id": "CST_NEGO_PATENT",
+      "contract_type": "construction",
+      "name": "공사 특허·신기술 수의계약",
+      "priority": 13,
+      "conditions": {
+        "negotiation_reason": "patent_new_tech"
+      },
+      "result": {
+        "method": "수의계약 (특허·신기술 보유자)",
+        "bidder_selection": "수의 (특허공법·신기술 적용)",
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제2호 (특정인의 기술이 필요하거나 경쟁이 성립될 수 없는 경우)"
+      ],
+      "notes": "특허공법·신기술 적용 공사.",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제2호"
+      }
+    },
+    {
+      "rule_id": "CST_NEGO_SPECIFIC",
+      "contract_type": "construction",
+      "name": "공사 특정인 수의계약",
+      "priority": 14,
+      "conditions": {
+        "negotiation_reason": "specific_person"
+      },
+      "result": {
+        "method": "수의계약 (특정인)",
+        "bidder_selection": "수의 (법령 또는 정책상 특정인 대상)",
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제2호 (특정인의 기술이 필요하거나 경쟁이 성립될 수 없는 경우)"
+      ],
+      "notes": "법령 또는 정책상 특정 시공자 대상.",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제2호"
+      }
+    },
+    {
+      "rule_id": "CST_NEGO_SMALL_REPEAT",
+      "contract_type": "construction",
+      "name": "공사 소액 수의계약",
+      "priority": 15,
+      "conditions": {
+        "negotiation_reason": "small_repeat"
+      },
+      "result": {
+        "method": "수의계약 (소액)",
+        "bidder_selection": "수의 (소액 — 경쟁 비효율)",
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제5호 (경쟁에 따라 계약하는 것이 비효율적인 경우)"
+      ],
+      "notes": "추정가격 소액 기준 등 경쟁에 따라 계약하는 것이 비효율적인 경우(시행령 제26조 제1항 제5호 각 목). 동일업체 반복 수의계약은 사유가 아니라 통제 대상(쪼개기·일감몰아주기 점검).",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제5호"
+      }
+    },
+    {
+      "rule_id": "CST_NEGO_OTHER",
+      "contract_type": "construction",
+      "name": "공사 기타 정당화 수의계약",
+      "priority": 16,
+      "conditions": {
+        "negotiation_reason": "other_justified"
+      },
+      "result": {
+        "method": "수의계약 (기타 정당화)",
+        "bidder_selection": "수의 (개별 정당화 사유 명시)",
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제5호 (경쟁에 따라 계약하는 것이 비효율적인 경우)"
+      ],
+      "notes": "위 각 호에 해당하지 않으나 별도 정당화 사유가 있는 경우.",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제5호"
+      }
+    },
+    {
+      "rule_id": "PRD_001",
+      "contract_type": "product",
+      "name": "물품 일반경쟁입찰 (고시금액 이상, 비중소기업 제품)",
+      "priority": 100,
+      "conditions": {
+        "estimated_price_gte": 230000000,
+        "is_sme_competition_product": false
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사",
+        "pass_score": 85,
+        "lower_limit_rate": 0.80495,
+        "procurement_agency": "자체구매 (또는 조달청 위탁 가능 — 다수공급자계약·제3자단가계약·구매위탁 등)",
+        "alternatives": [
+          {
+            "method": "수의계약(시담)",
+            "reason": "특허·긴급·기술독점·재공고 유찰 등 사유 시",
+            "kind": "negotiated"
+          },
+          {
+            "method": "지명경쟁입찰",
+            "reason": "특수 기술·실적·지정 사유 시",
+            "kind": "designated_competitive"
+          },
+          {
+            "method": "소액전자(수의견적)",
+            "reason": "부분 분리발주 시 일부 항목",
+            "kind": "small_negotiated_electronic"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 제7조",
+        "국가계약법 시행령 제42조"
+      ],
+      "notes": "일반물품 적격심사 기준 적용. 85점/80.495%. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
+      "source": {
+        "document": "적격심사기준(기획재정부 계약예규)·발주기관별 적격심사 세부기준"
+      }
+    },
+    {
+      "rule_id": "PRD_002",
+      "contract_type": "product",
+      "name": "물품 중소기업자간 제한경쟁 (고시금액 이상)",
+      "priority": 90,
+      "conditions": {
+        "estimated_price_gte": 230000000,
+        "is_sme_competition_product": true
+      },
+      "result": {
+        "method": "중소기업자간 제한경쟁입찰",
+        "bidder_selection": "적격심사",
+        "pass_score": 88,
+        "lower_limit_rate": 0.87995,
+        "mandatory_delegation_gte": 230000000,
+        "procurement_agency": "조달청 위탁 의무 (2.3억 이상)",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "중소기업제품 구매촉진 및 판로지원에 관한 법률 제7조",
+        "공기업·준정부기관 계약사무규칙 제7조의2"
+      ],
+      "notes": "중소기업자간 경쟁제품으로 지정된 품목은 중소기업자간 경쟁 의무",
+      "source": {
+        "document": "중소기업제품 구매촉진 및 판로지원에 관한 법률",
+        "page": null,
+        "paragraph": "제7조"
+      }
+    },
+    {
+      "rule_id": "PRD_003",
+      "contract_type": "product",
+      "name": "물품 제한경쟁 — 중소기업 (1억~2.3억)",
+      "priority": 140,
+      "conditions": {
+        "estimated_price_gte": 100000000,
+        "estimated_price_lt": 230000000,
+        "is_sme_competition_product": true
+      },
+      "result": {
+        "method": "중소기업자간 제한경쟁입찰",
+        "bidder_selection": "적격심사",
+        "pass_score": 88,
+        "lower_limit_rate": 0.87995,
+        "alternatives": [
+          {
+            "method": "소액수의계약",
+            "reason": "중소기업자간 경쟁제품 중 1억 이하는 소액수의 가능 (판로지원법 시행령·중소벤처기업부 고시 기준)",
+            "kind": "small_negotiated_under_100m"
+          },
+          {
+            "method": "소액전자(수의견적)",
+            "reason": "5천만원 미만은 견적에 의한 수의계약",
+            "kind": "small_negotiated_electronic"
+          },
+          {
+            "method": "수의계약(시담)",
+            "reason": "정비·보수·감리·진단·컨설팅 등 사유 시 수의계약 선택 가능",
+            "kind": "negotiated"
+          },
+          {
+            "method": "지명경쟁입찰",
+            "reason": "특수기술·실적 등 지명 사유 시",
+            "kind": "designated_competitive"
+          },
+          {
+            "method": "일반경쟁입찰",
+            "reason": "특수기술/조달 사유 부재 시 일반경쟁 기본",
+            "kind": "general_competitive"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "중소기업제품 구매촉진 및 판로지원에 관한 법률 제4조"
+      ],
+      "source": {
+        "document": "중소기업제품 구매촉진 및 판로지원에 관한 법률",
+        "page": null,
+        "paragraph": "제4조"
+      }
+    },
+    {
+      "rule_id": "PRD_003B",
+      "contract_type": "product",
+      "name": "물품 일반경쟁입찰 — 비중소기업 제품 (1억~2.3억)",
+      "priority": 140,
+      "conditions": {
+        "estimated_price_gte": 100000000,
+        "estimated_price_lt": 230000000,
+        "is_sme_competition_product": false
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사",
+        "pass_score": 85,
+        "lower_limit_rate": 0.80495,
+        "procurement_agency": "자체구매 (고시금액 미만)",
+        "alternatives": [
+          {
+            "method": "수의계약(시담)",
+            "reason": "특허·긴급·기술독점·재공고 유찰 등 사유 시",
+            "kind": "negotiated"
+          },
+          {
+            "method": "지명경쟁입찰",
+            "reason": "특수 기술·실적·지정 사유 시",
+            "kind": "designated_competitive"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 제7조",
+        "국가계약법 시행령 제42조"
+      ],
+      "notes": "1억~2.3억 비(非)중소기업자간 경쟁제품은 일반경쟁(적격심사). PRD_003(중기간 경쟁제품)과 is_sme_competition_product로 상호배타. SME=False 오추천 정정 (2026-06-13).",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제42조"
+      }
+    },
+    {
+      "rule_id": "PRD_004",
+      "contract_type": "product",
+      "name": "물품 제한경쟁 — 소기업/소상공인 (1억 미만, 중기간 경쟁제품)",
+      "priority": 150,
+      "conditions": {
+        "estimated_price_gte": 50000000,
+        "estimated_price_lt": 100000000,
+        "is_sme_competition_product": true
+      },
+      "result": {
+        "method": "소기업(소상공인)자간 제한경쟁입찰",
+        "bidder_selection": "적격심사",
+        "pass_score": 88,
+        "lower_limit_rate": 0.87995,
+        "alternatives": [
+          {
+            "method": "소액수의계약",
+            "reason": "중소기업자간 경쟁제품 1억 이하는 소액수의 가능 (판로지원법 시행령·중소벤처기업부 고시 기준)",
+            "kind": "small_negotiated_under_100m"
+          },
+          {
+            "method": "소액전자(수의견적)",
+            "reason": "2천만원 초과는 전자조달시스템 견적 필수 (시행령 제30조 제2항)",
+            "kind": "small_negotiated_electronic"
+          },
+          {
+            "method": "수의계약(시담)",
+            "reason": "정비·보수·진단 등 사유 시",
+            "kind": "negotiated"
+          },
+          {
+            "method": "지명경쟁입찰",
+            "reason": "특수기술·실적 등 지명 사유 시",
+            "kind": "designated_competitive"
+          },
+          {
+            "method": "일반경쟁입찰",
+            "reason": "특수기술/조달 사유 부재 시 일반경쟁 기본",
+            "kind": "general_competitive"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "중소기업제품 구매촉진 및 판로지원에 관한 법률 제4조",
+        "소상공인 보호 및 지원에 관한 법률"
+      ],
+      "source": {
+        "document": "중소기업제품 구매촉진 및 판로지원에 관한 법률·소상공인 보호법",
+        "page": null,
+        "paragraph": "제4조"
+      }
+    },
+    {
+      "rule_id": "PRD_005",
+      "contract_type": "product",
+      "name": "물품 소액수의/소액전자 (1억 이하)",
+      "priority": 200,
+      "conditions": {
+        "estimated_price_lte": 100000000
+      },
+      "result": {
+        "method": "소액수의계약",
+        "bidder_selection": "견적에 의한 수의계약",
+        "electronic_required_gt": 20000000,
+        "lower_limit_rate": 0.87995,
+        "min_quotes": 2,
+        "alternatives": [
+          {
+            "method": "지명경쟁입찰",
+            "reason": "5천만 미만 소액에서도 특수 사유 시 지명경쟁 선택 가능",
+            "kind": "designated_competitive"
+          },
+          {
+            "method": "일반경쟁입찰",
+            "reason": "특수기술/조달 사유 부재 시 일반경쟁 기본",
+            "kind": "general_competitive"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제5호 (소액수의)",
+        "계약사무규칙 제8조"
+      ],
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제5호"
+      }
+    },
+    {
+      "rule_id": "PRD_006",
+      "contract_type": "product",
+      "name": "물품 국제입찰 (7.1억 이상)",
+      "priority": 80,
+      "conditions": {
+        "estimated_price_gte": 710000000,
+        "is_sme_competition_product": false
+      },
+      "result": {
+        "method": "국제입찰 (WTO-GPA 적용)",
+        "bidder_selection": "적격심사",
+        "pass_score": 85,
+        "lower_limit_rate": 0.80495,
+        "procurement_agency": "조달청 의무 위탁",
+        "alternatives": [
+          {
+            "method": "수의계약(시담)",
+            "reason": "특허·기술독점·긴급 등 사유 시",
+            "kind": "negotiated"
+          },
+          {
+            "method": "지명경쟁입찰",
+            "reason": "특수 기술·실적 사유 시",
+            "kind": "designated_competitive"
+          },
+          {
+            "method": "일반경쟁입찰",
+            "reason": "특수기술/조달 사유 부재 시 일반경쟁 기본",
+            "kind": "general_competitive"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 제4조 (국제입찰에 따른 정부조달계약의 범위)",
+        "국가계약법 시행령 제2조 제3호 (고시금액 정의)",
+        "특정조달을 위한 국가를 당사자로 하는 계약에 관한 법률 시행령 특례규정",
+        "WTO 정부조달협정(GPA) — 보조 인용"
+      ],
+      "notes": "WTO-GPA 적용 7.1억원 이상 물품. 적격심사 기준은 일반 물품(PRD_001)과 동일하게 85점/80.495%. ※기존 '국가계약법 시행령 제4조 (국제입찰 정의)'는 삭제된 조문이었고, 국제입찰 범위는 국가계약법 제4조·시행령 제2조 제3호(고시금액)가 근거. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
+      "source": {
+        "document": "국가계약법 제4조·시행령 제2조 제3호·적격심사기준(기획재정부 계약예규)·발주기관별 적격심사 세부기준"
+      }
+    },
+    {
+      "rule_id": "PUB_001",
+      "contract_type": "public_procurement",
+      "name": "공공구매 — 중소기업제품 우선구매",
+      "priority": 100,
+      "conditions": {
+        "is_sme_product": true
+      },
+      "result": {
+        "method": "제한경쟁입찰 또는 수의계약 (우선구매)",
+        "mandatory_ratio": 0.5,
+        "scope": [
+          "service",
+          "product",
+          "construction"
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "중소기업제품 구매촉진 및 판로지원에 관한 법률 제4조"
+      ],
+      "source": {
+        "document": "중소기업제품 구매촉진 및 판로지원에 관한 법률",
+        "page": null,
+        "paragraph": "제4조"
+      }
+    },
+    {
+      "rule_id": "PUB_002",
+      "contract_type": "public_procurement",
+      "name": "공공구매 — 여성기업 우선구매",
+      "priority": 110,
+      "conditions": {
+        "is_women_enterprise": true
+      },
+      "result": {
+        "method": "제한경쟁입찰 (여성기업 우선)",
+        "mandatory_ratio_by_type": {
+          "construction": 0.03,
+          "service": 0.05,
+          "product": 0.05
+        },
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "여성기업 지원에 관한 법률 제9조"
+      ],
+      "source": {
+        "document": "여성기업 지원에 관한 법률",
+        "page": null,
+        "paragraph": "제9조"
+      }
+    },
+    {
+      "rule_id": "PUB_003",
+      "contract_type": "public_procurement",
+      "name": "공공구매 — 사회적기업 우선구매",
+      "priority": 120,
+      "conditions": {
+        "is_social_enterprise": true
+      },
+      "result": {
+        "method": "수의계약 또는 제한경쟁 (사회적기업)",
+        "mandatory_ratio": 0.03,
+        "certification_note": "고용노동부 인증 사회적기업만 해당 (지자체 인증 불가)",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "사회적기업 육성법 제12조"
+      ],
+      "source": {
+        "document": "사회적기업 육성법",
+        "page": null,
+        "paragraph": "제12조"
+      }
+    },
+    {
+      "rule_id": "PUB_004",
+      "contract_type": "public_procurement",
+      "name": "공공구매 — 기술개발제품 우선구매",
+      "priority": 130,
+      "conditions": {
+        "is_tech_developed_product": true
+      },
+      "result": {
+        "method": "수의계약 또는 우선구매",
+        "mandatory_ratio": 0.08,
+        "sub_ratio_of_sme": 0.15,
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "중소기업제품 구매촉진 및 판로지원에 관한 법률 제14조"
+      ],
+      "source": {
+        "document": "중소기업제품 구매촉진 및 판로지원에 관한 법률",
+        "page": null,
+        "paragraph": "제14조"
+      }
+    },
+    {
+      "rule_id": "CST_001",
+      "contract_type": "construction",
+      "name": "공사 종합심사낙찰제 / 적격심사 (50억 이상)",
+      "priority": 80,
+      "conditions": {
+        "estimated_price_gte": 5000000000,
+        "construction_specialty": "general"
+      },
+      "result": {
+        "method_by_amount": {
+          "gte_10000000000": "종합심사낙찰제 (PQ 대상)",
+          "gte_5000000000": "일반경쟁입찰 (적격심사 별표4)"
+        },
+        "bidder_selection_by_amount": {
+          "gte_10000000000": "종합심사 (입찰가격·공사수행능력·사회적책임 종합평가)",
+          "gte_5000000000": "적격심사 (별표4)"
+        },
+        "pass_score_by_amount": {
+          "gte_10000000000": {
+            "pass_score": null,
+            "schedule": "종합심사낙찰제",
+            "_note": "종합심사낙찰제 — 낙찰하한율 개념 없음(최고득점). 2026-07-16 오표기(별표3 값 복사) 제거"
+          },
+          "gte_5000000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.87495,
+            "byeolpyo": "별표3"
+          },
+          "gte_1000000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.88745,
+            "byeolpyo": "별표4"
+          },
+          "gte_300000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.89745,
+            "byeolpyo": "별표5"
+          },
+          "gte_200000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.89745,
+            "byeolpyo": "별표6"
+          },
+          "gte_0": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.89745,
+            "byeolpyo": "별표7"
+          }
+        },
+        "pq_required_gte": 10000000000,
+        "procurement_agency": "자체구매",
+        "alternatives": [
+          {
+            "method": "제한경쟁입찰",
+            "reason": "300억 미만 또는 사정에 따라 제한경쟁(실적·지역) 선택",
+            "kind": "limited_competitive"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 제7조",
+        "국가계약법 시행령 제42조",
+        "국가계약법 시행령 제42조 제4항 (종합심사낙찰제)",
+        "공사 적격심사 세부기준(발주기관별)",
+        "종합심사낙찰제 심사기준(기획재정부 계약예규)"
+      ],
+      "notes": "100억 이상: 종합심사낙찰제 (적격심사 미적용). 50억~100억: 적격심사 별표, 95점/87.495%. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
+      "source": {
+        "document": "적격심사기준(기획재정부 계약예규)·발주기관별 적격심사 세부기준"
+      }
+    },
+    {
+      "rule_id": "CST_002",
+      "contract_type": "construction",
+      "name": "공사 일반경쟁입찰 (10억~50억)",
+      "priority": 100,
+      "conditions": {
+        "estimated_price_gte": 1000000000,
+        "estimated_price_lt": 5000000000,
+        "construction_specialty": "general"
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사 (별표5)",
+        "pass_score": 95,
+        "lower_limit_rate": 0.88745,
+        "procurement_agency": "자체구매",
+        "alternatives": [
+          {
+            "method": "수의계약(시담)",
+            "reason": "긴급·재공고 유찰·기술적 곤란 등 사유 시",
+            "kind": "negotiated"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 제7조",
+        "국가계약법 시행령 제42조",
+        "공사적격심사세부기준 별표5"
+      ],
+      "notes": "10억 이상~50억 미만 공사. 95점/88.745%. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
+      "source": {
+        "document": "적격심사기준(기획재정부 계약예규)·발주기관별 적격심사 세부기준"
+      }
+    },
+    {
+      "rule_id": "CST_003",
+      "contract_type": "construction",
+      "name": "공사 일반경쟁입찰 (3억~10억)",
+      "priority": 110,
+      "conditions": {
+        "estimated_price_gte": 300000000,
+        "estimated_price_lt": 1000000000,
+        "construction_specialty": "general"
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사 (별표6)",
+        "pass_score": 95,
+        "lower_limit_rate": 0.89745,
+        "procurement_agency": "자체구매",
+        "alternatives": [
+          {
+            "method": "수의계약(시담)",
+            "reason": "긴급·재공고 유찰 등 사유 시",
+            "kind": "negotiated"
+          },
+          {
+            "method": "소액전자(수의견적)",
+            "reason": "5천만 미만 부분공정 분리발주 시",
+            "kind": "small_negotiated_electronic"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 제7조",
+        "국가계약법 시행령 제42조",
+        "공사적격심사세부기준 별표6"
+      ],
+      "notes": "3억 이상~10억 미만 공사. 95점/89.745%. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
+      "source": {
+        "document": "적격심사기준(기획재정부 계약예규)·발주기관별 적격심사 세부기준"
+      }
+    },
+    {
+      "rule_id": "CST_004",
+      "contract_type": "construction",
+      "name": "공사 종합 일반경쟁(적격심사 별표6) — 4억~10억",
+      "priority": 120,
+      "conditions": {
+        "estimated_price_gte": 400000000,
+        "estimated_price_lt": 1000000000,
+        "construction_specialty": "general"
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사 (별표6)",
+        "pass_score": 95,
+        "lower_limit_rate": 0.89745,
+        "procurement_agency": "자체구매",
+        "alternatives": [
+          {
+            "method": "수의계약(시담)",
+            "reason": "긴급·재공고 유찰 등 사유 시",
+            "kind": "negotiated"
+          },
+          {
+            "method": "소액전자(수의견적)",
+            "reason": "5천만 미만 부분공정 분리발주 시",
+            "kind": "small_negotiated_electronic"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 제7조",
+        "국가계약법 시행령 제42조",
+        "공사적격심사세부기준 별표6"
+      ],
+      "notes": "고시금액(2.3억) 이상~3억 미만 공사. 95점/89.745%. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
+      "source": {
+        "document": "적격심사기준(기획재정부 계약예규)·발주기관별 적격심사 세부기준"
+      }
+    },
+    {
+      "rule_id": "CST_005",
+      "contract_type": "construction",
+      "name": "공사 종합 소액수의계약/소액전자 (4억 이하)",
+      "priority": 200,
+      "conditions": {
+        "construction_specialty": "general",
+        "estimated_price_lte": 400000000
+      },
+      "result": {
+        "method": "소액수의계약",
+        "bidder_selection": "견적에 의한 수의계약",
+        "electronic_required_gt": 20000000,
+        "lower_limit_rate": 0.89745,
+        "min_quotes": 2,
+        "alternatives": [
+          {
+            "method": "일반경쟁입찰",
+            "reason": "시행령 제7조 원칙 — 소액수의 대신 일반경쟁 선택 가능 (발주부서 재량)",
+            "kind": "general_competitive"
+          },
+          {
+            "method": "지명경쟁입찰",
+            "reason": "5천만 미만 소액에서도 특수 사유 시 지명경쟁 선택 가능",
+            "kind": "designated_competitive"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제5호 (소액수의)",
+        "계약사무규칙 제8조"
+      ],
+      "notes": "2천만원 초과: 전자조달시스템 견적 필수, 2천만원 이하: 1인 견적 가능(소기업·소상공인 등은 5천만원 이하) — 시행령 제30조",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제5호"
+      }
+    },
+    {
+      "rule_id": "CST_006",
+      "contract_type": "construction",
+      "name": "공사 제한경쟁입찰 (지역제한, 종합공사 150억 미만)",
+      "priority": 150,
+      "conditions": {
+        "estimated_price_lt": 15000000000,
+        "estimated_price_gte": 400000000,
+        "regional_restriction": true,
+        "construction_specialty": "general"
+      },
+      "result": {
+        "method": "제한경쟁입찰 (지역제한)",
+        "restriction_type": "regional",
+        "restriction_area": "주된 영업소 소재지 시·도 단위",
+        "bidder_selection": "적격심사",
+        "lower_limit_rate": 0.89745,
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제21조 제1항 제6호"
+      ],
+      "notes": "고시금액(2.3억) 미만에서만 지역제한 가능. 낙찰하한율 89.745%.",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제21조 제1항 제6호"
+      }
+    },
+    {
+      "rule_id": "CST_007",
+      "contract_type": "construction",
+      "name": "공사 종합 일반경쟁(적격심사) — 4억 이상 ~ 100억 미만",
+      "priority": 190,
+      "conditions": {
+        "estimated_price_lt": 10000000000,
+        "estimated_price_gte": 400000000,
+        "construction_specialty": "general"
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사 (별표7)",
+        "pass_score": 95,
+        "lower_limit_rate": 0.89745,
+        "alternatives": [
+          {
+            "method": "소액전자(수의견적)",
+            "reason": "5천만원 미만 공사 견적",
+            "kind": "small_negotiated_electronic"
+          },
+          {
+            "method": "수의계약(시담)",
+            "reason": "긴급·재공고 유찰·정비·보수 등 사유 시",
+            "kind": "negotiated"
+          },
+          {
+            "method": "지명경쟁입찰",
+            "reason": "특수기술·실적 등 지명 사유 시",
+            "kind": "designated_competitive"
+          }
+        ],
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 제7조",
+        "국가계약법 시행령 제42조",
+        "공사적격심사세부기준 별표7"
+      ],
+      "notes": "5천만원 이상~고시금액(2.3억) 미만 공사. 95점/89.745%. 지역제한 조건 해당 시 CST_006 우선. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
+      "source": {
+        "document": "적격심사기준(기획재정부 계약예규)·발주기관별 적격심사 세부기준"
+      }
+    },
+    {
+      "rule_id": "CST_ELEC_001",
+      "contract_type": "construction",
+      "name": "전기공사 일반경쟁입찰 (고시금액 이상)",
+      "priority": 80,
+      "conditions": {
+        "estimated_price_gte": 230000000,
+        "construction_specialty": "electrical"
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사 (공사 적격심사 세부기준 — 전기공사 주1 적용)",
+        "pass_score_by_amount": {
+          "gte_10000000000": {
+            "pass_score": null,
+            "schedule": "종합심사낙찰제",
+            "_note": "종합심사낙찰제 — 낙찰하한율 개념 없음(최고득점). 2026-07-16 오표기(별표3 값 복사) 제거"
+          },
+          "gte_5000000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.87495,
+            "byeolpyo": "별표3(준용)"
+          },
+          "gte_1000000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.88745,
+            "byeolpyo": "별표4(주1 적용)"
+          },
+          "gte_300000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.89745,
+            "byeolpyo": "별표4(주1 적용)"
+          },
+          "gte_80000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.89745,
+            "byeolpyo": "별표6(주1 적용)"
+          },
+          "gte_0": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.89745,
+            "byeolpyo": "별표7(주1 적용)"
+          }
+        },
+        "license_required": "전기공사업 등록 (전기공사업법 제4조)",
+        "separation_required": true,
+        "applicable_criteria": "전기공사 적격심사 세부기준 (조달청 고시)",
+        "special_notes": [
+          "입찰참가자격: 전기공사업 등록업체 한정 (전기공사업법 제4조)",
+          "분리발주 원칙: 건설·설비공사와 반드시 분리발주 (전기공사업법 제11조)",
+          "적격심사: 일반 건설공사 기준이 아닌 전기공사 적격심사 세부기준(조달청 고시) 적용",
+          "적격심사: 공사 적격심사 세부기준(발주기관별) 적용 — 전기공사 주1(전기·정보통신·소방·국가유산공사는 별표 금액 매핑이 주1·주2·주3로 다름)"
+        ],
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "전기공사업법 제4조 (전기공사업 등록 의무)",
+        "전기공사업법 제11조 (분리발주 원칙)",
+        "국가계약법 시행령 제42조 (적격심사)",
+        "전기공사 적격심사 세부기준 (조달청 고시)"
+      ],
+      "notes": "전기공사업 등록업체 한정 입찰. 분리발주 원칙 적용. 적격심사는 공사 적격심사 세부기준(주1) 별도 적용.",
+      "source": {
+        "document": "전기공사업법·전기공사 적격심사세부기준",
+        "page": null,
+        "paragraph": "제4조, 제11조"
+      }
+    },
+    {
+      "rule_id": "CST_ELEC_002",
+      "contract_type": "construction",
+      "name": "전기공사 일반경쟁(적격심사) — 1.6억 초과",
+      "priority": 115,
+      "conditions": {
+        "estimated_price_gte": 160000000,
+        "estimated_price_lt": 230000000,
+        "construction_specialty": "electrical"
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사 (공사 적격심사 세부기준 — 전기공사 주1 적용)",
+        "pass_score": 95,
+        "lower_limit_rate": 0.89745,
+        "license_required": "전기공사업 등록 (전기공사업법 제4조)",
+        "separation_required": true,
+        "applicable_criteria": "전기공사 적격심사 세부기준 (조달청 고시)",
+        "special_notes": [
+          "입찰참가자격: 전기공사업 등록업체 한정 (전기공사업법 제4조)",
+          "분리발주 원칙: 건설공사와 반드시 분리발주 (전기공사업법 제11조)",
+          "지역제한 가능: 고시금액(2.3억) 미만이므로 지역제한 가능"
+        ],
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "전기공사업법 제4조 (전기공사업 등록 의무)",
+        "전기공사업법 제11조 (분리발주 원칙)",
+        "국가계약법 시행령 제42조 (적격심사)"
+      ],
+      "notes": "1.6억 초과~고시금액(2.3억) 미만 전기공사. 소액수의 한도(법령공사 1.6억) 초과 구간 — 등록업체 한정 일반경쟁.",
+      "source": {
+        "document": "전기공사업법",
+        "page": null,
+        "paragraph": "제4조, 제11조"
+      }
+    },
+    {
+      "rule_id": "CST_ELEC_003",
+      "contract_type": "construction",
+      "name": "전기공사 소액수의/소액전자 (1.6억 이하)",
+      "priority": 130,
+      "conditions": {
+        "construction_specialty": "electrical",
+        "estimated_price_lte": 160000000
+      },
+      "result": {
+        "method": "소액수의계약",
+        "bidder_selection": "수의계약 (소액)",
+        "pass_score": null,
+        "lower_limit_rate": 0.89745,
+        "license_required": "전기공사업 등록 (전기공사업법 제4조)",
+        "applicable_criteria": "국가계약법 시행령 제26조 제1항 제5호",
+        "special_notes": [
+          "입찰참가자격: 전기공사업 등록업체 한정",
+          "2천만원 초과: 2인 이상 견적서 징구 필수",
+          "분리발주 원칙은 소액도 동일하게 적용"
+        ],
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "전기공사업법 제4조 (전기공사업 등록 의무)",
+        "국가계약법 시행령 제26조 제1항 제5호 (소액수의)"
+      ],
+      "notes": "전기공사는 그 밖의 공사 관련 법령(전기공사업법) 적용 — 시행령 제26조 제1항 제5호 가목1) 기준 1.6억 이하 수의계약 가능(건산법 전문공사 2억과 구분). 전기공사업 등록업체와 계약.",
+      "source": {
+        "document": "전기공사업법",
+        "page": null,
+        "paragraph": "제4조"
+      }
+    },
+    {
+      "rule_id": "CST_ICT_001",
+      "contract_type": "construction",
+      "name": "정보통신공사 일반경쟁입찰 (고시금액 이상)",
+      "priority": 80,
+      "conditions": {
+        "estimated_price_gte": 230000000,
+        "construction_specialty": "ict"
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사 (공사 적격심사 세부기준 — 정보통신공사 주1 적용)",
+        "pass_score_by_amount": {
+          "gte_10000000000": {
+            "pass_score": null,
+            "schedule": "종합심사낙찰제",
+            "_note": "종합심사낙찰제 — 낙찰하한율 개념 없음(최고득점). 2026-07-16 오표기(별표3 값 복사) 제거"
+          },
+          "gte_5000000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.87495,
+            "byeolpyo": "별표3(준용)"
+          },
+          "gte_1000000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.88745,
+            "byeolpyo": "별표4(주1 적용)"
+          },
+          "gte_300000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.89745,
+            "byeolpyo": "별표4(주1 적용)"
+          },
+          "gte_80000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.89745,
+            "byeolpyo": "별표6(주1 적용)"
+          },
+          "gte_0": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.89745,
+            "byeolpyo": "별표7(주1 적용)"
+          }
+        },
+        "license_required": "정보통신공사업 등록 (정보통신공사업법 제14조)",
+        "separation_required": true,
+        "applicable_criteria": "정보통신공사 적격심사 세부기준 (조달청 고시)",
+        "special_notes": [
+          "입찰참가자격: 정보통신공사업 등록업체 한정 (정보통신공사업법 제14조)",
+          "분리발주 의무: 5억원 이상 정보통신공사는 다른 공종과 분리발주 (정보통신공사업법 제23조)",
+          "적격심사: 정보통신공사 적격심사 세부기준(조달청 고시) 별도 적용",
+          "주의: 5억 이상 공사는 반드시 분리발주 검토 후 발주"
+        ],
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "정보통신공사업법 제14조 (정보통신공사업 등록 의무)",
+        "정보통신공사업법 제23조 (분리발주 원칙)",
+        "국가계약법 시행령 제42조 (적격심사)",
+        "정보통신공사 적격심사 세부기준 (조달청 고시)"
+      ],
+      "notes": "정보통신공사업 등록 한정. 5억 이상 분리발주 의무.",
+      "source": {
+        "document": "정보통신공사업법",
+        "page": null,
+        "paragraph": "제14조, 제23조"
+      }
+    },
+    {
+      "rule_id": "CST_ICT_002",
+      "contract_type": "construction",
+      "name": "정보통신공사 일반경쟁(적격심사) — 1.6억 초과",
+      "priority": 115,
+      "conditions": {
+        "estimated_price_gte": 160000000,
+        "estimated_price_lt": 230000000,
+        "construction_specialty": "ict"
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사 (공사 적격심사 세부기준 — 정보통신공사 주1 적용)",
+        "pass_score": 95,
+        "lower_limit_rate": 0.89745,
+        "license_required": "정보통신공사업 등록 (정보통신공사업법 제14조)",
+        "separation_required": true,
+        "applicable_criteria": "정보통신공사 적격심사 세부기준 (조달청 고시)",
+        "special_notes": [
+          "입찰참가자격: 정보통신공사업 등록업체 한정",
+          "분리발주: 고시금액 미만이라도 다른 공종과 분리발주 원칙 적용"
+        ],
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "정보통신공사업법 제14조",
+        "국가계약법 시행령 제42조 (적격심사)"
+      ],
+      "notes": "1.6억 초과~고시금액(2.3억) 미만 정보통신공사. 소액수의 한도(법령공사 1.6억) 초과 구간 — 등록업체 한정 일반경쟁.",
+      "source": {
+        "document": "정보통신공사업법",
+        "page": null,
+        "paragraph": "제14조"
+      }
+    },
+    {
+      "rule_id": "CST_ICT_003",
+      "contract_type": "construction",
+      "name": "정보통신공사 소액수의/소액전자 (1.6억 이하)",
+      "priority": 130,
+      "conditions": {
+        "construction_specialty": "ict",
+        "estimated_price_lte": 160000000
+      },
+      "result": {
+        "method": "소액수의계약",
+        "bidder_selection": "수의계약 (소액)",
+        "pass_score": null,
+        "lower_limit_rate": 0.89745,
+        "license_required": "정보통신공사업 등록 (정보통신공사업법 제14조)",
+        "applicable_criteria": "국가계약법 시행령 제26조 제1항 제5호",
+        "special_notes": [
+          "입찰참가자격: 정보통신공사업 등록업체 한정",
+          "2천만원 초과: 2인 이상 견적서 징구 필수"
+        ],
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "정보통신공사업법 제14조",
+        "국가계약법 시행령 제26조 제1항 제5호 (소액수의)"
+      ],
+      "notes": "정보통신공사는 그 밖의 공사 관련 법령(정보통신공사업법) 적용 — 시행령 제26조 제1항 제5호 가목1) 기준 1.6억 이하 수의계약 가능(건산법 전문공사 2억과 구분). 정보통신공사업 등록업체와 계약.",
+      "source": {
+        "document": "정보통신공사업법",
+        "page": null,
+        "paragraph": "제14조"
+      }
+    },
+    {
+      "rule_id": "CST_FIRE_001",
+      "contract_type": "construction",
+      "name": "소방시설공사 일반경쟁입찰 (고시금액 이상)",
+      "priority": 80,
+      "conditions": {
+        "estimated_price_gte": 230000000,
+        "construction_specialty": "fire_safety"
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사 (공사 적격심사 세부기준 — 소방공사 주1 적용)",
+        "pass_score_by_amount": {
+          "gte_10000000000": {
+            "pass_score": null,
+            "schedule": "종합심사낙찰제",
+            "_note": "종합심사낙찰제 — 낙찰하한율 개념 없음(최고득점). 2026-07-16 오표기(별표3 값 복사) 제거"
+          },
+          "gte_5000000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.87495,
+            "byeolpyo": "별표3(준용)"
+          },
+          "gte_1000000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.88745,
+            "byeolpyo": "별표4(주1 적용)"
+          },
+          "gte_300000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.89745,
+            "byeolpyo": "별표4(주1 적용)"
+          },
+          "gte_80000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.89745,
+            "byeolpyo": "별표6(주1 적용)"
+          },
+          "gte_0": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.89745,
+            "byeolpyo": "별표7(주1 적용)"
+          }
+        },
+        "license_required": "소방시설공사업 등록 (소방시설공사업법 제4조)",
+        "separation_required": true,
+        "applicable_criteria": "공사 적격심사 세부기준(발주기관별, 소방공사 주1 적용)",
+        "special_notes": [
+          "입찰참가자격: 소방시설공사업 등록업체 한정 (소방시설공사업법 제4조)",
+          "감리 의무: 소방공사감리업자 별도 선임 필수 (소방시설공사업법 제16조)",
+          "분리발주: 다른 공종과 분리발주 원칙",
+          "적격심사: 공사 적격심사 세부기준(발주기관별) 적용 — 소방·전기·정보통신·국가유산공사는 별표 금액 매핑이 주1·주2·주3로 다름"
+        ],
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "소방시설공사업법 제4조 (소방시설공사업 등록 의무)",
+        "소방시설공사업법 제16조 (소방공사감리업자 선임 의무)",
+        "국가계약법 시행령 제42조 (적격심사)",
+        "공사 적격심사 세부기준(발주기관별)"
+      ],
+      "notes": "소방시설공사업 등록 한정. 감리업자 별도 선임 필수.",
+      "source": {
+        "document": "소방시설공사업법",
+        "page": null,
+        "paragraph": "제4조, 제16조"
+      }
+    },
+    {
+      "rule_id": "CST_FIRE_002",
+      "contract_type": "construction",
+      "name": "소방공사 일반경쟁(적격심사) — 1억 이상",
+      "priority": 115,
+      "conditions": {
+        "estimated_price_gte": 160000000,
+        "estimated_price_lt": 230000000,
+        "construction_specialty": "fire_safety"
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사 (공사 적격심사 세부기준 — 소방공사 주1 적용)",
+        "pass_score": 95,
+        "lower_limit_rate": 0.89745,
+        "license_required": "소방시설공사업 등록 (소방시설공사업법 제4조)",
+        "separation_required": true,
+        "applicable_criteria": "공사 적격심사 세부기준(발주기관별, 소방공사 주1 적용)",
+        "special_notes": [
+          "입찰참가자격: 소방시설공사업 등록업체 한정",
+          "감리 의무: 소방공사감리업자 별도 선임 필수"
+        ],
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "소방시설공사업법 제4조",
+        "소방시설공사업법 제16조 (소방공사감리 의무)",
+        "국가계약법 시행령 제42조 (적격심사)"
+      ],
+      "notes": "5천만~2.3억 소방시설공사. 감리업자 별도 선임 필수.",
+      "source": {
+        "document": "소방시설공사업법",
+        "page": null,
+        "paragraph": "제4조, 제16조"
+      }
+    },
+    {
+      "rule_id": "CST_FIRE_003",
+      "contract_type": "construction",
+      "name": "소방공사 소액수의/소액전자 (1.6억 이하)",
+      "priority": 130,
+      "conditions": {
+        "construction_specialty": "fire_safety",
+        "estimated_price_lte": 160000000
+      },
+      "result": {
+        "method": "소액수의계약",
+        "bidder_selection": "수의계약 (소액)",
+        "pass_score": null,
+        "lower_limit_rate": 0.89745,
+        "license_required": "소방시설공사업 등록 (소방시설공사업법 제4조)",
+        "applicable_criteria": "국가계약법 시행령 제26조 제1항 제5호",
+        "special_notes": [
+          "입찰참가자격: 소방시설공사업 등록업체 한정",
+          "2천만원 초과: 2인 이상 견적서 징구 필수",
+          "소액이라도 감리 필요 여부 별도 검토 필요"
+        ],
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "소방시설공사업법 제4조",
+        "국가계약법 시행령 제26조 제1항 제5호 (소액수의)"
+      ],
+      "notes": "그 밖의 공사 관련 법령(소방시설공사업법) 공사 — 시행령 26조1항5호가목1) 1.6억 이하 소액수의. 소방시설공사업 등록업체와 계약.",
+      "source": {
+        "document": "소방시설공사업법",
+        "page": null,
+        "paragraph": "제4조"
+      }
+    },
+    {
+      "rule_id": "CST_HERITAGE_001",
+      "contract_type": "construction",
+      "name": "문화재수리 일반경쟁입찰 (고시금액 이상)",
+      "priority": 80,
+      "conditions": {
+        "estimated_price_gte": 230000000,
+        "construction_specialty": "cultural_heritage"
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사 (공사 적격심사 세부기준 — 국가유산공사 주1 적용)",
+        "pass_score_by_amount": {
+          "gte_10000000000": {
+            "pass_score": null,
+            "schedule": "종합심사낙찰제",
+            "_note": "종합심사낙찰제 — 낙찰하한율 개념 없음(최고득점). 2026-07-16 오표기(별표3 값 복사) 제거"
+          },
+          "gte_5000000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.87495,
+            "byeolpyo": "별표3(준용)"
+          },
+          "gte_1000000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.88745,
+            "byeolpyo": "별표4(주1 적용)"
+          },
+          "gte_300000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.89745,
+            "byeolpyo": "별표4(주1 적용)"
+          },
+          "gte_80000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.89745,
+            "byeolpyo": "별표6(주1 적용)"
+          },
+          "gte_0": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.89745,
+            "byeolpyo": "별표7(주1 적용)"
+          }
+        },
+        "license_required": "문화재수리업 허가 (문화재수리 등에 관한 법률 제14조)",
+        "separation_required": false,
+        "applicable_criteria": "문화재수리업자 적격심사 세부기준 (문화재청 고시)",
+        "special_notes": [
+          "입찰참가자격: 문화재수리업 허가 업체 한정 (문화재수리 등에 관한 법률 제14조)",
+          "감독: 문화재청 및 관할 문화재위원회 감독 하에 시행",
+          "적격심사: 문화재수리업자 적격심사 세부기준(문화재청 고시) 별도 적용",
+          "주의: 문화재 손상 시 법적 책임이 중대 — 전문업체 자격 철저 확인 필수"
+        ],
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "문화재수리 등에 관한 법률 제14조 (문화재수리업 허가)",
+        "문화재수리 등에 관한 법률 제19조 (수리 감독)",
+        "국가계약법 시행령 제42조 (적격심사)",
+        "문화재수리업자 적격심사 세부기준 (문화재청 고시)"
+      ],
+      "notes": "문화재수리업 허가 업체 한정. 문화재청 감독. 적격심사 기준 별도.",
+      "source": {
+        "document": "문화재수리 등에 관한 법률",
+        "page": null,
+        "paragraph": "제14조, 제19조"
+      }
+    },
+    {
+      "rule_id": "CST_HERITAGE_002",
+      "contract_type": "construction",
+      "name": "문화재공사 일반경쟁(적격심사) — 1억 이상",
+      "priority": 115,
+      "conditions": {
+        "estimated_price_gte": 160000000,
+        "estimated_price_lt": 230000000,
+        "construction_specialty": "cultural_heritage"
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사 (공사 적격심사 세부기준 — 국가유산공사 주1 적용)",
+        "pass_score": 95,
+        "lower_limit_rate": 0.89745,
+        "license_required": "문화재수리업 허가 (문화재수리 등에 관한 법률 제14조)",
+        "separation_required": false,
+        "applicable_criteria": "문화재수리업자 적격심사 세부기준 (문화재청 고시)",
+        "special_notes": [
+          "입찰참가자격: 문화재수리업 허가 업체 한정",
+          "고시금액 미만이라도 문화재 전문업체 자격 필수 확인"
+        ],
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "문화재수리 등에 관한 법률 제14조",
+        "국가계약법 시행령 제42조 (적격심사)"
+      ],
+      "notes": "5천만~2.3억 문화재수리. 문화재수리업 허가 업체 한정.",
+      "source": {
+        "document": "문화재수리 등에 관한 법률",
+        "page": null,
+        "paragraph": "제14조"
+      }
+    },
+    {
+      "rule_id": "CST_HERITAGE_003",
+      "contract_type": "construction",
+      "name": "문화재공사 소액수의/소액전자 (1.6억 이하)",
+      "priority": 130,
+      "conditions": {
+        "construction_specialty": "cultural_heritage",
+        "estimated_price_lte": 160000000
+      },
+      "result": {
+        "method": "소액수의계약",
+        "bidder_selection": "수의계약 (소액)",
+        "pass_score": null,
+        "lower_limit_rate": 0.89745,
+        "license_required": "문화재수리업 허가 (문화재수리 등에 관한 법률 제14조)",
+        "applicable_criteria": "국가계약법 시행령 제26조 제1항 제5호",
+        "special_notes": [
+          "입찰참가자격: 문화재수리업 허가 업체 한정",
+          "2천만원 초과: 2인 이상 견적서 징구 필수",
+          "소액이라도 문화재 수리 전문업체 자격 확인 필수"
+        ],
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "문화재수리 등에 관한 법률 제14조",
+        "국가계약법 시행령 제26조 제1항 제5호 (소액수의)"
+      ],
+      "notes": "그 밖의 공사 관련 법령(문화재수리법) 공사 — 시행령 26조1항5호가목1) 1.6억 이하 소액수의. 문화재수리업 등록업체와 계약.",
+      "source": {
+        "document": "문화재수리 등에 관한 법률",
+        "page": null,
+        "paragraph": "제14조"
+      }
+    },
+    {
+      "rule_id": "CST_PQ_001",
+      "contract_type": "construction",
+      "name": "공사 PQ 의무 (300억원 이상 일반경쟁입찰)",
+      "priority": 75,
+      "conditions": {
+        "estimated_price_gte": 30000000000,
+        "construction_specialty": "general",
+        "pq_required": true
+      },
+      "result": {
+        "method": "일반경쟁입찰 (PQ 사전심사)",
+        "bidder_selection": "종합심사낙찰제 또는 적격심사 (PQ 통과자)",
+        "pass_score_by_amount": {
+          "gte_10000000000": {
+            "pass_score": null,
+            "schedule": "종합심사낙찰제",
+            "note": "종합심사낙찰제 적용",
+            "_note": "종합심사낙찰제 — 낙찰하한율 개념 없음(최고득점). 2026-07-16 오표기(별표3 값 복사) 제거"
+          },
+          "gte_5000000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.87495
+          },
+          "gte_3000000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.87495
+          }
+        },
+        "pq_notice_period_days": 30,
+        "pq_evaluation_items": [
+          "시공경험(유사실적)",
+          "기술능력(기술자)",
+          "재무상태(신용등급·부채비율)",
+          "사회적신인도(법적제재)"
+        ],
+        "special_notes": [
+          "추정가격 300억원 이상 공사는 PQ 의무 대상 (국가계약법 시행령 제21조)",
+          "PQ 공고 기간: 일반 입찰공고와 별도로 최소 30일 이상 사전 공고",
+          "PQ 통과 업체에 한해 입찰 참가 자격 부여",
+          "발주기관별 PQ 세부기준 별도 적용 — 반드시 기관 내부 기준 확인"
+        ],
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제21조 (입찰참가자격 사전심사)",
+        "국가계약법 시행령 제42조 제4항 (종합심사낙찰제)",
+        "조달청 입찰참가자격 사전심사요령"
+      ],
+      "notes": "300억 이상 일반공사 PQ 의무. 조달청 「입찰참가자격사전심사요령」 등 발주기관별 PQ 세부기준 적용.",
+      "source": {
+        "document": "국가계약법 시행령·조달청 PQ요령",
+        "page": null,
+        "paragraph": "제21조"
+      }
+    },
+    {
+      "rule_id": "PRD_SME_PRODUCT_UNDER_100M",
+      "contract_type": "product",
+      "name": "물품 중기간 경쟁제품 — 1억 미만 (중소기업자간 강제, 소기업·소상공인 차단)",
+      "priority": 220,
+      "conditions": {
+        "estimated_price_lt": 100000000,
+        "is_sme_competition_product": true
+      },
+      "result": {
+        "method": "중소기업자간 제한경쟁입찰",
+        "bidder_selection": "적격심사",
+        "pass_score": 88,
+        "lower_limit_rate": 0.87995,
+        "procurement_agency": "자체구매 (1억 미만)",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "중소기업제품 구매촉진 및 판로지원에 관한 법률 제7조",
+        "판로지원법 시행령 제2조의2"
+      ],
+      "notes": "1억 미만 중기간 경쟁제품은 무조건 중소기업자간 — 소기업·소상공인 제한으로 매칭 차단 (판로지원법 시행령 제2조의2·중소벤처기업부 고시 기준)",
+      "source": {
+        "document": "중기부 고시 중기간 경쟁제품",
+        "page": null,
+        "paragraph": "1억 미만 강제"
+      }
+    },
+    {
+      "rule_id": "PRD_SME_PRODUCT_MID",
+      "contract_type": "product",
+      "name": "물품 중기간 경쟁제품 — 1억~2.3억 (중소기업자간)",
+      "priority": 210,
+      "conditions": {
+        "estimated_price_gte": 100000000,
+        "estimated_price_lt": 230000000,
+        "is_sme_competition_product": true
+      },
+      "result": {
+        "method": "중소기업자간 제한경쟁입찰",
+        "bidder_selection": "적격심사",
+        "pass_score": 88,
+        "lower_limit_rate": 0.87995,
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "중소기업제품 구매촉진 및 판로지원에 관한 법률 제7조"
+      ],
+      "notes": "1억~2.3억 중기간 — 중소기업자간 경쟁 (고시금액 미만이라 조달위탁 의무 아님)",
+      "source": {
+        "document": "중기부 고시",
+        "page": null,
+        "paragraph": ""
+      }
+    },
+    {
+      "rule_id": "SVC_SME_PRODUCT_UNDER_100M",
+      "contract_type": "service",
+      "name": "용역 중기간 경쟁제품 — 1억 미만 (중소기업자간 강제)",
+      "priority": 220,
+      "conditions": {
+        "estimated_price_lt": 100000000,
+        "is_sme_competition_product": true
+      },
+      "result": {
+        "method": "중소기업자간 제한경쟁입찰",
+        "bidder_selection": "적격심사",
+        "pass_score": 85,
+        "lower_limit_rate": 0.87745,
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "중소기업제품 구매촉진 및 판로지원에 관한 법률 제7조"
+      ],
+      "notes": "1억 미만 중기간 용역은 중소기업자간 강제 (소기업·소상공인 차단)",
+      "source": {
+        "document": "중기부 고시",
+        "page": null,
+        "paragraph": ""
+      }
+    },
+    {
+      "rule_id": "SVC_SME_PRODUCT_MID",
+      "contract_type": "service",
+      "name": "용역 중기간 경쟁제품 — 1억~2.3억 (중소기업자간)",
+      "priority": 210,
+      "conditions": {
+        "estimated_price_gte": 100000000,
+        "estimated_price_lt": 230000000,
+        "is_sme_competition_product": true
+      },
+      "result": {
+        "method": "중소기업자간 제한경쟁입찰",
+        "bidder_selection": "적격심사",
+        "pass_score": 85,
+        "lower_limit_rate": 0.87745,
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "중소기업제품 구매촉진 및 판로지원에 관한 법률 제7조"
+      ],
+      "notes": "1억~2.3억 중기간 용역",
+      "source": {
+        "document": "중기부 고시",
+        "page": null,
+        "paragraph": ""
+      }
+    },
+    {
+      "rule_id": "SVC_SME_PRODUCT_OVER_230M",
+      "contract_type": "service",
+      "name": "용역 중기간 경쟁제품 — 2.3억 이상 (조달청 위탁 의무)",
+      "priority": 200,
+      "conditions": {
+        "estimated_price_gte": 230000000,
+        "is_sme_competition_product": true
+      },
+      "result": {
+        "method": "중소기업자간 제한경쟁입찰",
+        "bidder_selection": "적격심사",
+        "pass_score": 85,
+        "lower_limit_rate": 0.87745,
+        "mandatory_delegation_gte": 230000000,
+        "procurement_agency": "조달청 위탁 의무 (2.3억 이상)",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "중소기업제품 구매촉진 및 판로지원에 관한 법률 제7조",
+        "공기업·준정부기관 계약사무규칙 제7조의2"
+      ],
+      "notes": "2.3억 이상 중기간 용역 — 조달청 위탁구매 의무 (한국장애인개발원 중증장애인 생산품 예외)",
+      "source": {
+        "document": "공공기관운영법 제44조",
+        "page": null,
+        "paragraph": ""
+      }
+    },
+    {
+      "rule_id": "LOCAL_SVC_NEGO",
+      "org_type": "local",
+      "contract_type": "service",
+      "name": "용역 소액수의(지자체 2천만 이하)",
+      "priority": 40,
+      "conditions": {
+        "estimated_price_lte": 20000000
+      },
+      "result": {
+        "method": "소액수의계약"
+      },
+      "legal_basis": [
+        "지방계약법 제9조",
+        "지방계약법 시행령 제25조제1항제5호나목",
+        "지방계약법 시행규칙 제33조"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_SVC_COMP",
+      "org_type": "local",
+      "contract_type": "service",
+      "name": "용역 경쟁입찰(지자체 2천만 초과)",
+      "priority": 45,
+      "conditions": {
+        "estimated_price_gte": 20000000
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사"
+      },
+      "legal_basis": [
+        "지방계약법 제9조①",
+        "지방계약법 시행령 제25조"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_PRD_NEGO",
+      "org_type": "local",
+      "contract_type": "product",
+      "name": "물품 소액수의(지자체 2천만 이하)",
+      "priority": 40,
+      "conditions": {
+        "estimated_price_lte": 20000000
+      },
+      "result": {
+        "method": "소액수의계약"
+      },
+      "legal_basis": [
+        "지방계약법 제9조",
+        "지방계약법 시행령 제25조제1항제5호나목",
+        "지방계약법 시행규칙 제33조"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_PRD_COMP",
+      "org_type": "local",
+      "contract_type": "product",
+      "name": "물품 경쟁입찰(지자체 2천만 초과)",
+      "priority": 45,
+      "conditions": {
+        "estimated_price_gte": 20000000
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사"
+      },
+      "legal_basis": [
+        "지방계약법 제9조①",
+        "지방계약법 시행령 제25조"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_CST_NEGO_GEN",
+      "org_type": "local",
+      "contract_type": "construction",
+      "name": "공사 소액수의(지자체 종합·건설 4억 이하)",
+      "priority": 38,
+      "conditions": {
+        "construction_specialty": "general",
+        "estimated_price_lte": 400000000
+      },
+      "result": {
+        "method": "소액수의계약"
+      },
+      "legal_basis": [
+        "지방계약법 제9조",
+        "지방계약법 시행령 제25조제1항제5호가목"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_CST_COMP_GEN",
+      "org_type": "local",
+      "contract_type": "construction",
+      "name": "공사 경쟁입찰 적격심사(지자체 종합·건설 4억 이상)",
+      "priority": 46,
+      "conditions": {
+        "construction_specialty": "general",
+        "estimated_price_gte": 400000000
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사",
+        "낙찰하한율_참조": "rules/local_award_criteria.json 시설공사 금액구간별(별표1~7)"
+      },
+      "legal_basis": [
+        "지방계약법 제9조①",
+        "지방계약법 시행령 제25조",
+        "행안부 예규 지방자치단체 입찰시 낙찰자 결정기준(시설공사 적격심사)"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_CST_NEGO_PRO",
+      "org_type": "local",
+      "contract_type": "construction",
+      "name": "공사 소액수의(지자체 전문 2억 이하)",
+      "priority": 38,
+      "conditions": {
+        "construction_specialty": "electrical",
+        "estimated_price_lte": 200000000
+      },
+      "result": {
+        "method": "소액수의계약"
+      },
+      "legal_basis": [
+        "지방계약법 제9조",
+        "지방계약법 시행령 제25조제1항제5호가목"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_CST_COMP_PRO",
+      "org_type": "local",
+      "contract_type": "construction",
+      "name": "공사 경쟁입찰 적격심사(지자체 전문 2억 이상)",
+      "priority": 46,
+      "conditions": {
+        "construction_specialty": "electrical",
+        "estimated_price_gte": 200000000
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사",
+        "낙찰하한율_참조": "rules/local_award_criteria.json 시설공사 금액구간별(별표1~7)"
+      },
+      "legal_basis": [
+        "지방계약법 제9조①",
+        "지방계약법 시행령 제25조",
+        "행안부 예규 지방자치단체 입찰시 낙찰자 결정기준(시설공사 적격심사)"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_CST_NEGO_ETC",
+      "org_type": "local",
+      "contract_type": "construction",
+      "name": "공사 소액수의(지자체 기타·법령공사 1.6억 이하)",
+      "priority": 38,
+      "conditions": {
+        "construction_specialty": "fire_safety",
+        "estimated_price_lte": 160000000
+      },
+      "result": {
+        "method": "소액수의계약"
+      },
+      "legal_basis": [
+        "지방계약법 제9조",
+        "지방계약법 시행령 제25조제1항제5호가목"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_CST_COMP_ETC",
+      "org_type": "local",
+      "contract_type": "construction",
+      "name": "공사 경쟁입찰 적격심사(지자체 기타·법령공사 1.6억 이상)",
+      "priority": 46,
+      "conditions": {
+        "construction_specialty": "fire_safety",
+        "estimated_price_gte": 160000000
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사",
+        "낙찰하한율_참조": "rules/local_award_criteria.json 시설공사 금액구간별(별표1~7)"
+      },
+      "legal_basis": [
+        "지방계약법 제9조①",
+        "지방계약법 시행령 제25조",
+        "행안부 예규 지방자치단체 입찰시 낙찰자 결정기준(시설공사 적격심사)"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_SVC_NEGO_SMALLBIZ",
+      "org_type": "local",
+      "contract_type": "service",
+      "name": "용역 수의 소기업·소상공인(지자체 2천만~1억)",
+      "priority": 34,
+      "conditions": {
+        "estimated_price_gte": 20000000,
+        "small_enterprise_restriction": true,
+        "estimated_price_lte": 100000000
+      },
+      "result": {
+        "method": "수의계약"
+      },
+      "legal_basis": [
+        "지방계약법 시행령 제25조제1항제5호다목"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_PRD_NEGO_SMALLBIZ",
+      "org_type": "local",
+      "contract_type": "product",
+      "name": "물품 수의 소기업·소상공인(지자체 2천만~1억)",
+      "priority": 34,
+      "conditions": {
+        "estimated_price_gte": 20000000,
+        "small_enterprise_restriction": true,
+        "estimated_price_lte": 100000000
+      },
+      "result": {
+        "method": "수의계약"
+      },
+      "legal_basis": [
+        "지방계약법 시행령 제25조제1항제5호다목"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_SVC_NEGO_ACADEMIC",
+      "org_type": "local",
+      "contract_type": "service",
+      "name": "용역 수의 학술연구·원가계산(지자체 2천만~1억)",
+      "priority": 34,
+      "conditions": {
+        "estimated_price_gte": 20000000,
+        "service_type": "academic",
+        "estimated_price_lte": 100000000
+      },
+      "result": {
+        "method": "수의계약"
+      },
+      "legal_basis": [
+        "지방계약법 시행령 제25조제1항제5호라목"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_SVC_NEGO_SOCIAL",
+      "org_type": "local",
+      "contract_type": "service",
+      "name": "용역 수의 사회적·여성·장애인기업(지자체 2천만~1억)",
+      "priority": 34,
+      "conditions": {
+        "estimated_price_gte": 20000000,
+        "is_social_enterprise": true,
+        "estimated_price_lte": 100000000
+      },
+      "result": {
+        "method": "수의계약"
+      },
+      "legal_basis": [
+        "지방계약법 시행령 제25조제1항제5호마목"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_PRD_NEGO_SOCIAL",
+      "org_type": "local",
+      "contract_type": "product",
+      "name": "물품 수의 사회적·여성·장애인기업(지자체 2천만~1억)",
+      "priority": 34,
+      "conditions": {
+        "estimated_price_gte": 20000000,
+        "is_social_enterprise": true,
+        "estimated_price_lte": 100000000
+      },
+      "result": {
+        "method": "수의계약"
+      },
+      "legal_basis": [
+        "지방계약법 시행령 제25조제1항제5호마목"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_SVC_NEGO_REBID",
+      "org_type": "local",
+      "contract_type": "service",
+      "name": "용역 수의 재공고입찰(지자체)",
+      "priority": 30,
+      "conditions": {
+        "negotiation_reason": "rebid"
+      },
+      "result": {
+        "method": "수의계약"
+      },
+      "legal_basis": [
+        "지방계약법 시행령 제26조",
+        "지방계약법 시행규칙 제32조"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_PRD_NEGO_REBID",
+      "org_type": "local",
+      "contract_type": "product",
+      "name": "물품 수의 재공고입찰(지자체)",
+      "priority": 30,
+      "conditions": {
+        "negotiation_reason": "rebid"
+      },
+      "result": {
+        "method": "수의계약"
+      },
+      "legal_basis": [
+        "지방계약법 시행령 제26조",
+        "지방계약법 시행규칙 제32조"
+      ]
+    }
+  ]
+}
