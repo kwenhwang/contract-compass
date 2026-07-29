@@ -52,7 +52,8 @@ EXCLUDES=(
 fail=0
 for pat in "${PATTERNS[@]}"; do
   # /etl/data/: 공개 간행물 파싱 산출물(.gitignore) — 원문에 공기업명이 정당 등장
-  hits=$(grep -rInE "${EXCLUDES[@]}" -e "$pat" "$ROOT" 2>/dev/null | grep -v "$SELF" | grep -v "/\.env:" | grep -v "/etl/data/" || true)
+  # tests/qa_bank.json: leak 탐침 질문("한국수자원공사 내규…")이 의도적으로 포함된 테스트 데이터
+  hits=$(grep -rInE "${EXCLUDES[@]}" -e "$pat" "$ROOT" 2>/dev/null | grep -v "$SELF" | grep -v "/\.env:" | grep -v "/etl/data/" | grep -v "tests/qa_bank.json" || true)
   if [[ -n "$hits" ]]; then
     fail=1
     echo "=== 매치: /$pat/ ==="

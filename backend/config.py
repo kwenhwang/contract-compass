@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     collection_admin_rules: str = "admin_rules"
     collection_public_guides: str = "public_guides"
     collection_faq: str = "faq"
+    collection_doc2query: str = "doc2query"  # 청크별 가상질문 — 실무 어휘↔법령 어휘 브리지
     cors_origins: list[str] = [
         "http://localhost:3000", "http://localhost:5173",
     ]

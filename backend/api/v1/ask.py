@@ -156,6 +156,8 @@ _SYSTEM_PROMPT = """당신은 공공계약 실무 전문 AI 어시스턴트입�
    - 잘못된 예: 자료에 "시행령 제26조"만 있는데 "시행령 제42조에 따라..."로 답변 (환각)
    - 올바른 예: 자료에 조문이 명시된 경우만 그대로 인용. 없으면 "관련 시행령 규정에 따라..."
 
+11. **부적절 요청 거절**: 낙찰 확률을 인위적으로 높이는 방법, 특정 업체에 유리하게 조건을 설계하는 방법, 담합·입찰 방해에 해당할 수 있는 요청에는 검색 여부와 무관하게 **명시적으로 거절**하세요 — "해당 요청은 공정경쟁 원칙(국가계약법 제7조 일반경쟁 원칙)에 반할 수 있어 안내할 수 없습니다"라고 답하고, 적법한 대안(제한·지명경쟁의 법정 요건 등)이 있으면 그것만 안내하세요.
+
 [핵심 임계값 표 — 검증된 확정 값. 금액·한도 질문은 이 표가 검색 결과·사전지식보다 우선한다]
 ※ 아래는 국가계약법령(국가기관·공기업 공통 국가계약 체계) 기준. 학습된 옛 수치(예: 고시금액 2.1억)를 절대 쓰지 말 것.
 - 수의계약 가능 한도(시행령 제26조 제1항 제5호 가목): 종합공사 4억 이하 / 전문공사 2억 이하 / 전기·정보통신·소방 등 그 밖의 공사 1.6억 이하 / 물품·용역 일반 2천만 이하, **소기업·소상공인, 여성·장애인기업, 학술연구 등 요건 충족 시 1억 이하**
@@ -163,8 +165,11 @@ _SYSTEM_PROMPT = """당신은 공공계약 실무 전문 AI 어시스턴트입�
 - 고시금액: **2.3억** (기획재정부고시 제2024-42호, 2025.1.1.~) — 물품·용역 중소기업자간 경쟁 원칙 경계
 - 공기업·준정부기관 국제입찰: 물품·용역 **7.1억** 이상, 공사 **265억** 이상 (국가기관·지자체는 고시금액 상이 — 기재부 고시 확인 안내)
 - 종합심사낙찰제: 공사 **100억** 이상 (시행령 제42조 제4항) / PQ 대상: 300억 이상 (발주기관 세부기준 확인)
-- 지방자치단체는 지방계약법 시행령 제25조·제30조 체계로 한도가 일부 다름 — 지자체 질문이면 지방계약법 기준으로 답하고, 불확실하면 그 취지를 밝힐 것
-※ 임계값 답변 시 반드시 "이하/미만" 구분을 명시하고, 수의계약 한도와 1인 견적 한도를 혼동하지 말 것."""
+- 지방자치단체 수의계약 한도(지방계약법 시행령 제25조 제1항 제5호): 종합공사 **4억** 이하 / 전문공사 **2억** 이하 / 물품·용역 일반 2천만 이하(여성·장애인기업 등 요건부 확대)
+- 소액수의 최저투찰율(조달청 기준): 일반 용역 87.995% / **단순노무용역 89.995%**
+- 핵심 근거 조문 매핑: 수의계약 사유=시행령 제26조 / **지역제한 경쟁=시행령 제21조 제1항 제6호** / 실적제한=제21조 제1항 제1호 / 적격심사=시행령 제42조 / 종합심사낙찰제=제42조 제4항 / PQ=시행령 제13조 / 재공고입찰=시행령 제20조
+※ 임계값 답변 시 반드시 "이하/미만" 구분을 명시하고, 수의계약 한도와 1인 견적 한도를 혼동하지 말 것.
+※ **검색 결과의 수치가 이 표와 다르면 그 수치는 구(舊) 고시값이다**(예: 고시금액 2.1억, 국제입찰 6.5억·6.36억 등) — 반드시 이 표의 현행값으로 답하고, 필요하면 "과거 기준은 달랐다"고 부기하라."""
 
 
 _CT_LABEL = {"service": "용역", "product": "물품", "construction": "공사"}
@@ -195,13 +200,17 @@ def _verify_citations(answer: str, sources: list) -> list[str]:
     haystack_norm = re.sub(r"\s+", "", haystack)
     unverified = []
     for c in cites:
-        c_norm = re.sub(r"\s+", "", c)
-        # 조문 번호만 비교 (예: "시행령 제42조" → "제42조"가 sources에 있는지)
+        # 2026-07-29 정정: 조문 번호만 비교하면 무관 법령의 동일 조번호가 '검증됨'으로
+        # 통과했다 — 인용에 법령명이 있으면 법령명+조번호가 함께 있어야 검증 인정.
         article_match = re.search(r"제\s*\d+\s*조", c)
-        if article_match:
-            article = re.sub(r"\s+", "", article_match.group())
-            if article not in haystack_norm:
-                unverified.append(c)
+        if not article_match:
+            continue
+        article = re.sub(r"\s+", "", article_match.group())
+        law_part = re.sub(r"\s+", "", c[: article_match.start()]).rstrip("ㆍ·,")
+        if article not in haystack_norm:
+            unverified.append(c)
+        elif law_part and law_part not in haystack_norm:
+            unverified.append(c)
     return unverified
 
 
@@ -219,96 +228,6 @@ def _avg_relevance(sources: list) -> float | None:
         return None
     scores = [getattr(s, "relevance_score", 0.0) or 0.0 for s in scored]
     return round(sum(scores) / len(scores), 3) if scores else None
-
-
-# 답변에 인용된 시행령·법령 조문을 law 컬렉션에서 직접 lookup → sources에 추가
-# (dense 검색 임계값에서 law가 떨어져도 사용자가 원문 검증 가능하도록)
-def _inject_law_chunks(answer: str, sources: list, max_inject: int = 2) -> list:
-    """답변 본문에서 '시행령 제N조' 등 추출 → 법령 조문 컬렉션 직접 조회 → sources에 prepend.
-
-    이미 sources에 law type이 충분히 있으면 추가 안 함. sources 중복(같은 article)도 방지.
-    """
-    citations = list(set(_LAW_CITATION_PATTERN.findall(answer)))
-    if not citations:
-        return sources
-    # 이미 law 청크 2건 이상이면 추가 안 함
-    existing_law = [s for s in sources if getattr(s, "source_type", "") == "law"]
-    if len(existing_law) >= 2:
-        return sources
-
-    try:
-        from backend.api.v1.law import _get_collection as _law_col, _LAW_ALIASES
-    except Exception:
-        return sources
-
-    try:
-        col = _law_col()
-    except Exception:
-        return sources
-
-    injected = []
-    seen_articles = set()
-    # 기존 law 청크에서 이미 매칭된 article 추출 (중복 방지)
-    for s in existing_law:
-        title = getattr(s, "section_title", "") or ""
-        m = re.search(r"제\s*\d+\s*조", title)
-        if m:
-            seen_articles.add(re.sub(r"\s+", "", m.group()))
-
-    for ref in citations:
-        if len(existing_law) + len(injected) >= max_inject:
-            break
-        # 조문 추출
-        am = re.search(r"제\s*\d+\s*조(?:의\s*\d+)?", ref)
-        if not am:
-            continue
-        article = re.sub(r"\s+", "", am.group())
-        if article in seen_articles:
-            continue
-
-        # 법령명 매핑
-        law_part = ref[: am.start()].strip().rstrip("ㆍ·,").strip()
-        target_law = _LAW_ALIASES.get(law_part, law_part) if law_part else ""
-
-        try:
-            results = col.get(where={"article_titles": article}, include=["documents", "metadatas"])
-            docs = results.get("documents") or []
-            metas = results.get("metadatas") or []
-            if not docs:
-                continue
-            best = None
-            for doc, meta in zip(docs, metas):
-                if not target_law or (meta.get("law_name") or "") == target_law:
-                    best = (doc, meta); break
-            if best is None and not target_law:
-                best = (docs[0], metas[0])
-            if best is None:
-                continue
-            doc, meta = best
-            injected.append({
-                "chunk_id": meta.get("chunk_id") or f"law:{article}:{meta.get('law_name','')}",
-                "section_title": f"{meta.get('law_name','법령')} {article}",
-                "excerpt": (doc or "")[:200],
-                "content": doc or "",
-                "relevance_score": 0.95,  # 인용 직접 매칭 → 최상위
-                "source_type": "law",
-                "document_id": meta.get("law_ref", ""),
-            })
-            seen_articles.add(article)
-        except Exception:
-            continue
-
-    if not injected:
-        return sources
-
-    # AskSource 객체로 변환 — 같은 파일 안에 정의된 클래스 사용
-    out = []
-    for inj in injected:
-        try:
-            out.append(AskSource(**inj))
-        except Exception:
-            pass
-    return out + sources
 
 
 def _sv(s, key: str, default=""):
@@ -362,24 +281,31 @@ def _ground_law_sources(answer: str, chunks: list[dict], sources: list, as_dict:
         from backend.api.v1.law import _LAW_ALIASES
     except Exception:
         _LAW_ALIASES = {}
+    answer_cite_refs: list[str] = []  # 사후 접지 조회용 (실존 조문만 sources에 붙는다)
     for cite in set(_LAW_CITATION_PATTERN.findall(answer or "")):
         p = _ref_pair(cite)
         if not p:
             continue
         law, art = p
         law = re.sub(r"\s+", "", _LAW_ALIASES.get(law, law)) if law else ""
-        allow_pairs.add((law, art))
-        # 2026-07-17 정정: 법령명 무시 쌍은 답변 인용 자체에 법령명이 없을 때만 —
-        # 항상 추가하면 '국가계약법 시행령 제26조' 인용에 지방계약법 제26조 청크가 통과함
-        if not law:
-            allow_pairs.add(("", art))
+        if law:
+            allow_pairs.add((law, art))
+            answer_cite_refs.append(cite)
+        else:
+            # 2026-07-29 정정: 법령명 없는 인용("제17조에 따라")을 전 법령 와일드카드로
+            # 풀면 16개 무관 법령의 동일 조번호 66청크가 통과했다(Codex 적대검증) —
+            # 국가계약 계열(코퍼스 기본 관점)로만 한정 확장한다.
+            for base in ("국가계약법시행령", "국가계약법시행규칙", "국가계약법"):
+                allow_pairs.add((base, art))
+            answer_cite_refs.append(f"국가계약법 시행령 {art}")
 
     def _keep_law(s) -> bool:
         p = _ref_pair(_sv(s, "section_title"))
         if not p:
             return False  # 파싱 불가한 법령 제목 → 검증 불가로 제거
         law, art = p
-        return (law, art) in allow_pairs or ("", art) in allow_pairs
+        # ("", art) 와일드카드 disjunct 제거(2026-07-29) — 법령명까지 일치해야 통과
+        return (law, art) in allow_pairs
 
     non_law = [s for s in sources if _sv(s, "source_type") != "law"]
     kept_law = [s for s in sources if _sv(s, "source_type") == "law" and _keep_law(s)]
@@ -393,10 +319,12 @@ def _ground_law_sources(answer: str, chunks: list[dict], sources: list, as_dict:
         col = _law_col()
     except Exception:
         col = None
-    # 2026-07-24: 비-law 근거가 하나도 안 남았으면(=검색이 실질 근거를 못 건짐) 조회 주입
-    # 조문은 정의상 orphan → 답변 문구와 무관하게 보강 금지(문구 정규식 우회 차단).
-    if col is not None and non_law:
-        for r in content_refs:
+    # 2026-07-29 정정: 종전엔 비-law 근거 0건이면 보강을 막았지만(orphan 우려), 그 결과
+    # 조문 번호까지 든 실질 답변이 sources 0건으로 나갔다(적대검증 6건). 이제 답변이
+    # 인용한 조문도 조회 대상에 포함하되, **law_articles에 실존하는 조문만** 붙는다 —
+    # 실존하지 않는 인용은 여전히 unverified_citations로 남아 환각 우회는 차단된다.
+    if col is not None:
+        for r in content_refs + answer_cite_refs:
             if len(kept_law) + len(added) >= max_law:
                 break
             pr = _ref_pair(r)

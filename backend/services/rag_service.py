@@ -24,6 +24,7 @@ COLLECTION_MAP = {
 LAW_ARTICLES_COLLECTION = _settings.collection_law_articles
 ADMIN_RULES_COLLECTION = _settings.collection_admin_rules
 FAQ_COLLECTION = _settings.collection_faq
+DOC2QUERY_COLLECTION = _settings.collection_doc2query
 
 # 사용자 질문에서 토픽 추출용 키워드 사전 (tools/tag_topics.py와 동기 유지)
 _TOPIC_KEYWORDS: dict[str, list[str]] = {
@@ -216,7 +217,7 @@ class RAGService:
         - LLM·사용자가 부분(항)만 보는 게 아니라 조문 전체 맥락 동시 참조
         """
         try:
-            collection = self._client.get_collection(LAW_ARTICLES_COLLECTION)
+            collection = self._client.get_collection(LAW_ARTICLES_COLLECTION, embedding_function=self._ef)
         except Exception:
             return []
 
@@ -378,7 +379,7 @@ class RAGService:
         for lc in law_chunks:
             law_sources.append({
                 "chunk_id": lc["chunk_id"],
-                "document_id": LAW_ARTICLES_COLLECTION,
+                "document_id": (lc.get("law_name") or LAW_ARTICLES_COLLECTION),
                 "section_title": lc["section_title"],
                 "content": lc["content"],
                 "relevance_score": lc["relevance_score"],
@@ -553,7 +554,8 @@ class RAGService:
         # (기본 관점은 국가계약법 — 없으면 국가계약 케이스에 노이즈로 작용)
         is_local_gov_q = any(kw in query for kw in ("지방", "지자체", "지방자치"))
         try:
-            law_col = self._client.get_collection(LAW_ARTICLES_COLLECTION)
+            # 2026-07-29: 색인측과 동일한 다국어 EF 필수 — 미지정 시 기본(영어) EF로 질의돼 난수 검색
+            law_col = self._client.get_collection(LAW_ARTICLES_COLLECTION, embedding_function=self._ef)
 
             # 2026-05-31: 도메인 키워드 부스팅 — 한국어 임베딩이 못 잡는 핵심 법령 조문 강제 매칭
             # 예: "수의계약 사유" → 시행령 제26조 (제목에 '수의계약에 의할 수 있는 경우')
@@ -567,31 +569,35 @@ class RAGService:
                     # 국가계약법(시행령·시행규칙) 청크 우선 정렬
                     items = list(zip(all_law["ids"], all_law["documents"], all_law["metadatas"]))
                     def _priority(item):
+                        # 2026-07-29 교정: 본법·시행령 동순위라 4슬롯을 본법(제7조 등)이
+                        # 독식해 실무 핵심(시행령 제26조 등)이 구조적으로 배제됐음 —
+                        # 실무 절차·한도의 실체는 시행령·시행규칙이므로 이를 최우선.
                         m = item[2] or {}
                         ln = m.get("law_name", "") or ""
-                        if "국가계약법" in ln: return 0  # 1순위
-                        if "공기업" in ln or "준정부기관" in ln: return 1
-                        if "중소기업제품" in ln or "건설기술" in ln: return 2
-                        return 3
+                        if "국가계약법" in ln and "시행령" in ln: return 0
+                        if "국가계약법" in ln and "시행규칙" in ln: return 1
+                        if "국가계약법" in ln: return 2
+                        if "공기업" in ln or "준정부기관" in ln: return 3
+                        if "중소기업제품" in ln or "건설기술" in ln: return 4
+                        return 5
                     items.sort(key=_priority)
                     added = 0
                     for cid, doc, meta in items:
-                        if added >= 4:  # 키워드 부스팅 최대 4건
+                        if added >= 6:  # 키워드 부스팅 최대 6건 (시행령 우선 정렬 후)
                             break
                         if not isinstance(meta, dict) or cid in seen:
                             continue
                         if not is_local_gov_q and (meta.get("law_name", "") or "").startswith("지방자치단체"):
                             continue
-                        # 조 전체(parent) 또는 single만
-                        if meta.get("chunk_level") not in (None, "single", "parent"):
-                            continue
-                        # 조문 제목(첫 200자)에 트리거 키워드 포함 시 부스팅
-                        head = (doc or "")[:200]
+                        # 2026-07-29 교정: child(항 단위, 코퍼스 65%)를 배제하던 필터 제거 —
+                        # 정답이 child(예: 제26조 제1항 (계속1)의 공사 4억)에 있는 경우가 많다.
+                        # 검사 창도 law_ref+본문 400자로 확대(첫 200자가 무관 내용인 청크 대응).
+                        head = (meta.get("law_ref", "") or "") + " " + (doc or "")[:400]
                         if any(kw in head for kw in triggered):
                             seen[cid] = 0.95
                             all_chunks.append({
                                 "chunk_id": cid,
-                                "document_id": LAW_ARTICLES_COLLECTION,
+                                "document_id": (meta.get("law_name") or LAW_ARTICLES_COLLECTION),
                                 "section_title": meta.get("law_ref", ""),
                                 "chunk_type": "law_article",
                                 "chunk_level": meta.get("chunk_level", "single"),
@@ -631,7 +637,7 @@ class RAGService:
                     seen[cid] = 0.0
                     all_chunks.append({
                         "chunk_id": cid,
-                        "document_id": LAW_ARTICLES_COLLECTION,
+                        "document_id": (meta.get("law_name") or LAW_ARTICLES_COLLECTION),
                         "section_title": meta.get("law_ref", ""),
                         "chunk_type": "law_article",
                         "chunk_level": chunk_level,
@@ -660,7 +666,7 @@ class RAGService:
                         seen[p_cid] = 0.0
                         all_chunks.append({
                             "chunk_id": p_cid,
-                            "document_id": LAW_ARTICLES_COLLECTION,
+                            "document_id": ((p_meta or {}).get("law_name") or LAW_ARTICLES_COLLECTION),
                             "section_title": f"[조 전체] {p_meta.get('law_ref', p_ref)}",
                             "chunk_type": "law_article",
                             "chunk_level": "parent",
@@ -670,6 +676,50 @@ class RAGService:
                             "source_type": "law",
                             "law_refs": [],
                         })
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        # doc2query (청크별 가상질문) — 실무 어휘 질문을 법령 어휘 청크로 연결하는 브리지.
+        # 가상질문에 매칭되면 원본 청크를 본문으로 가져온다. 컬렉션 부재 시 자동 생략.
+        try:
+            d2q_col = self._client.get_collection(DOC2QUERY_COLLECTION, embedding_function=self._ef)
+            d2q_results = d2q_col.query(
+                query_texts=[query],
+                n_results=min(top_k, d2q_col.count() or 1),
+                include=["documents", "metadatas", "distances"],
+            )
+            d2q_docs = d2q_results.get("documents", [[]])[0]
+            d2q_metas = d2q_results.get("metadatas", [[]])[0]
+            d2q_dists = d2q_results.get("distances", [[]])[0]
+            for vq, meta, dist in zip(d2q_docs, d2q_metas, d2q_dists):
+                orig_cid = meta.get("original_chunk_id")
+                orig_col = meta.get("original_collection")
+                if not orig_cid or not orig_col or orig_cid in seen:
+                    continue
+                try:
+                    src_col = self._client.get_collection(orig_col, embedding_function=self._ef)
+                    r2 = src_col.get(ids=[orig_cid], include=["documents", "metadatas"])
+                    if not r2["documents"]:
+                        continue
+                    seen[orig_cid] = 0.0
+                    doc2 = r2["documents"][0]
+                    om = r2["metadatas"][0] or {}
+                    all_chunks.append({
+                        "chunk_id": orig_cid,
+                        "document_id": om.get("law_name") or om.get("document_id", orig_col),
+                        "section_title": om.get("law_ref") or om.get("section_title", ""),
+                        "chunk_type": om.get("chunk_type", "law_article" if orig_col == LAW_ARTICLES_COLLECTION else ""),
+                        "chunk_level": om.get("chunk_level", "single"),
+                        "content": doc2[:800],
+                        "relevance_score": round(max(0.0, 1.0 - dist), 3),
+                        "contract_type": om.get("contract_type", "law" if orig_col == LAW_ARTICLES_COLLECTION else ""),
+                        "source_type": "law" if orig_col == LAW_ARTICLES_COLLECTION else "guide",
+                        "matched_via": "doc2query",
+                        "matched_question": (vq or "")[:160],
+                        "law_refs": [],
+                    })
                 except Exception:
                     continue
         except Exception:

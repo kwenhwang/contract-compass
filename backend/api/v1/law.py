@@ -23,7 +23,9 @@ _LAW_ALIASES = {
 def _get_collection():
     settings = get_settings()
     client = chromadb.PersistentClient(settings.chroma_path)
-    return client.get_collection(settings.collection_law_articles)
+    from backend.services.embedding import GeminiEmbeddingFunction
+    return client.get_collection(settings.collection_law_articles,
+                                 embedding_function=GeminiEmbeddingFunction())
 
 
 class LawArticleResponse(BaseModel):

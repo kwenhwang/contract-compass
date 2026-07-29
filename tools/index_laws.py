@@ -98,7 +98,9 @@ def parse_law_xml(xml_path: Path) -> list[dict]:
         chunks.append({
             "law_ref":        ref,
             "law_name":       law_name,
-            "content":        f"{law_name} {art_id}\n{full_text[:2000]}",
+            # 절단 금지(2026-07-29): 2,000자 캡이 제26조 가목(공사 4억) 등 핵심을 유실시켰음.
+            # 전문 저장 — 임베딩 모델이 입력을 자체 절단하므로 검색 품질 손해 없음.
+            "content":        f"{law_name} {art_id}\n{full_text}",
             "article_titles": art_id,
             "chunk_level":    "parent" if is_long else "single",
             "parent_ref":     "",
@@ -153,9 +155,11 @@ def main():
         except Exception:
             pass
 
-    # 임베딩은 기존(default) 유지 — rag_service·law.py가 ef 없이 검색하므로 일관성 유지.
-    # hierarchy(부모 조문 + 자식 항)의 정밀 검색은 BM25 키워드 매칭이 담당(임베딩 교체 불필요).
-    collection = client.get_or_create_collection(name=LAW_COLLECTION)
+    # 2026-07-29 교정: 기본(영어 전용) 임베딩으로 색인돼 법령 dense 검색이 난수였음 —
+    # 타 컬렉션과 동일한 다국어 임베딩으로 통일. rag_service·검색측도 동시 변경됨(필수).
+    from backend.services.embedding import GeminiEmbeddingFunction
+    collection = client.get_or_create_collection(name=LAW_COLLECTION,
+                                                 embedding_function=GeminiEmbeddingFunction())
 
     all_ids, all_docs, all_metas = [], [], []
 
