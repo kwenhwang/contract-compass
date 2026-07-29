@@ -70,5 +70,13 @@ export function login(): void {
 }
 
 export function logout(): void {
+  // GoTrue 서버 세션도 무효화 (fire-and-forget — 실패해도 로컬 토큰 제거로 로그아웃 성립)
+  const t = getToken()
+  if (t) {
+    fetch(`${AUTH_BASE}/logout`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${t}` },
+    }).catch(() => {})
+  }
   localStorage.removeItem(KEY)
 }

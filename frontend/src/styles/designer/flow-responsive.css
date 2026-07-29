@@ -32,6 +32,16 @@
 }
 .dt-help:hover { border-color: var(--accent-primary); color: var(--accent-primary); }
 
+/* 로그인 위젯 — App 헤더·홈 topbar 공용 */
+.auth-user { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.auth-email {
+  font-size: var(--text-xs); font-weight: 600; color: var(--text-tertiary);
+  max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+@media (max-width: 720px) {
+  .auth-email { display: none; } /* 좁은 화면은 로그아웃 버튼만 */
+}
+
 /* top horizontal stepper */
 .dt-steps { display: flex; align-items: center; gap: 4px; margin: 0 auto; }
 .dt-step { display: inline-flex; align-items: center; gap: 8px; font-family: inherit; background: none; border: none; cursor: pointer; padding: 6px 8px; border-radius: var(--radius-full); transition: background var(--duration-fast); }

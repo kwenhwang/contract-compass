@@ -1,6 +1,8 @@
 // 홈/대시보드 — 계약나침반 진입 화면 (dashboard.css 클래스 사용).
 // 진입: /#home (또는 해시 없음). 카드 → 계약방법 결정 위저드 / 계약 Q&A / 용어사전.
 
+import AuthButton from '../components/AuthButton'
+
 export default function HomeDashboard({ onDecision, onAsk, onGlossary }: {
   onDecision: () => void; onAsk: () => void; onGlossary: () => void
 }) {
@@ -15,7 +17,7 @@ export default function HomeDashboard({ onDecision, onAsk, onGlossary }: {
             </span>
             <span><span className="tt">계약나침반</span><br /><span className="ts">공공계약 방법 결정 도우미</span></span>
           </div>
-          <div className="tb-right" style={{ marginLeft: 'auto' }} />
+          <div className="tb-right" style={{ marginLeft: 'auto' }}><AuthButton /></div>
         </div>
 
         {/* 본문 */}

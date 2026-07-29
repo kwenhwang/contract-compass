@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useWizardStore } from './store/wizardStore'
 import Icon from './components/Icon'
 import ChatSidebar from './components/ChatSidebar'
+import AuthButton from './components/AuthButton'
 import Step1Page from './pages/Step1Page'
 import Step2Page from './pages/Step2Page'
 import Step3Page from './pages/Step3Page'
@@ -504,7 +505,8 @@ export default function App() {
           </div>
         </button>
         <TopStepper step={Math.min(currentStep, 3)} onJump={jumpStep} />
-        <div className="dt-top-right">
+        <div className="dt-top-right" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <AuthButton />
           <button className="dt-help" onClick={() => setShowFeedback(true)}>
             <Icon name="message-circle" size={15} /> <span>의견 보내기</span>
           </button>
