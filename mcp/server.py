@@ -1,46 +1,30 @@
-"""계약나침반 MCP 서버 — 계약방법 결정·법령 검색·계약 Q&A를 MCP 도구로 노출.
+"""계약나침반 MCP 서버 — 계약방법 결정·법령/코퍼스 검색을 MCP 도구로 노출.
 
 에이전트(Codex·Claude 등)가 stdio(로컬) 또는 Streamable HTTP(원격,
 https://contract.naru.build/mcp)로 붙어 계약나침반 기능을 직접 호출한다.
-대상 인스턴스는 env `CONTRACT_COMPASS_URL`(기본 로컬 백엔드 :8402 — CF 왕복과
-ask 로그인 게이트의 엣지 IP 뭉침을 피한다).
+대상 인스턴스는 env `CONTRACT_COMPASS_URL`(기본 로컬 백엔드 :8402 — CF 왕복 회피).
+
+설계 원칙(2026-07-30): MCP 도구는 전부 **무LLM** — 클라이언트가 이미 LLM이므로
+백엔드는 결정론 판정(decide, skip_llm)과 검색 원문(search_*)만 제공한다.
+백엔드 OpenAI를 태우던 ask 도구는 제거(웹 UI 전용 /ask는 그대로).
 
 실행: python3 mcp/server.py                  # stdio (로컬 검증·codex 등록용)
       python3 mcp/server.py streamable-http  # 원격 서빙 (systemd contract-mcp.service)
 등록(codex): codex mcp add contract-compass -- python3 /path/to/mcp/server.py
-
-ask 게이트 통과: 백엔드 /ask는 익명 IP당 2회/일 후 로그인을 요구한다(chat_access).
-이 서버는 `SUPABASE_JWT_SECRET`(백엔드와 동일 값)으로 자체 HS256 JWT를 서명해
-로그인 사용자로 통과한다 — 시크릿 미설정이면 익명 폴백(2회/일)으로 동작.
 """
 from __future__ import annotations
 
 import os
 import sys
-import time
 from typing import Any
 
 import httpx
-import jwt as _jwt
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
 BASE_URL = os.environ.get("CONTRACT_COMPASS_URL", "http://127.0.0.1:8402").rstrip("/")
 API = f"{BASE_URL}/api/v1"
 _TIMEOUT = httpx.Timeout(60.0, connect=10.0)
-
-
-def _ask_headers() -> dict[str, str]:
-    """ask 로그인 게이트(chat_access) 통과용 내부 JWT — 요청마다 서명(exp 5분)."""
-    secret = os.environ.get("SUPABASE_JWT_SECRET")
-    if not secret:
-        return {}
-    now = int(time.time())
-    token = _jwt.encode(
-        {"sub": "contract-mcp", "email": "mcp@internal", "aud": "authenticated",
-         "iat": now, "exp": now + 300},
-        secret, algorithm="HS256")
-    return {"Authorization": f"Bearer {token}"}
 
 # 전 도구 읽기전용 — 어노테이션이 없으면 codex(비대화)가 승인 대상으로 보고 자동 취소한다(2026-07-29 실측)
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
@@ -50,10 +34,11 @@ server = MCPServer(
     title="계약나침반",
     instructions=(
         "한국 공공계약(국가계약법·지방계약법) 계약방법 결정 도우미. "
-        "decide_contract_method로 결정론 룰엔진 판정을, ask_contract_question으로 "
-        "법령 RAG 기반 Q&A를, search_law로 조문 원문을 조회한다. "
-        "도구는 한 번에 하나씩 순차 호출하라 — 특히 ask_contract_question을 병렬로 "
-        "여러 개 쏘면 지연이 누적돼 클라이언트 타임아웃으로 실패한다. "
+        "decide_contract_method로 결정론 룰엔진 판정을, search_law·get_law_article로 "
+        "법령 조문을, search_references로 예규·적격심사 세부기준·실무가이드까지 "
+        "전 코퍼스를 조회한다. 모든 도구는 LLM을 쓰지 않는다 — 답변 합성은 "
+        "네(클라이언트)가 도구 근거로 직접 하라. "
+        "도구는 한 번에 하나씩 순차 호출하라(병렬 다발 호출은 지연 누적으로 타임아웃). "
         "도구가 {'error': ...}를 반환하면 그 hint를 따르고, 도구 근거 없이 "
         "자체 지식으로 법령 수치를 단정하지 마라. "
         "답변은 정보 제공용이며 법적 자문이 아니다."
@@ -148,6 +133,9 @@ def decide_contract_method(
         "org_type": org_type,
         "is_sme_competition_product": is_sme_competition_product,
         "project_name": project_name,
+        # 에이전트 클라이언트는 자체 LLM으로 설명을 합성 — 백엔드 LLM 보조설명 생략
+        # (판정 결과·법령 근거는 동일, OpenAI 일일 예산 0 소모. 2026-07-30)
+        "skip_llm": True,
     }
     if service_type:
         body["service_type"] = service_type
@@ -185,29 +173,6 @@ def decide_contract_method(
 
 
 @server.tool(annotations=READ_ONLY)
-def ask_contract_question(question: str) -> dict:
-    """공공계약 Q&A — 법령·계약예규·공공계약 실무가이드 RAG 검색 + AI 답변.
-
-    Args:
-        question: 자연어 질문 (예: "소액수의계약 금액 한도는?")
-    """
-    d = _post("/ask", {"question": question}, headers=_ask_headers())
-    if _is_error(d):
-        return d
-    return {
-        "answer": d.get("answer", ""),
-        "sources": [
-            {
-                "title": s.get("section_title"),
-                "type": s.get("source_type"),
-                "excerpt": (s.get("excerpt") or s.get("content") or "")[:300],
-            }
-            for s in (d.get("sources") or [])[:6]
-        ],
-    }
-
-
-@server.tool(annotations=READ_ONLY)
 def search_law(query: str, top_k: int = 8) -> dict:
     """법령 조문 검색 — 키워드 또는 조문번호로 조문 스니펫 반환(상위 top_k건).
 
@@ -232,7 +197,28 @@ def search_law(query: str, top_k: int = 8) -> dict:
         # 0건은 오류가 아니라 재질의 신호 — 에이전트가 "실패"로 오독하고 자체 지식으로
         # 빠지지 않게 다음 행동을 명시한다(2026-07-30, 복합 쿼리 0건 6/12 실측).
         result["hint"] = ("0건 — 짧은 단일 키워드('수의계약')나 '법령명 제N조' 형태로 "
-                          "재검색하거나, ask_contract_question으로 질문하라.")
+                          "재검색하거나, search_references로 예규·가이드까지 넓혀 찾아라.")
+    return result
+
+
+@server.tool(annotations=READ_ONLY)
+def search_references(query: str, top_k: int = 6) -> dict:
+    """전 코퍼스 통합 검색 — 법령+계약예규+조달청·행안부 세부기준+실무가이드. LLM 미사용.
+
+    search_law가 법령 조문 전용인 것과 달리 예규·적격심사 세부기준·실무가이드까지
+    검색한다. 낙찰하한율·적격심사 배점·실무 절차 등 법령 본문 밖 질문에 사용하라.
+    AI 생성 없이 검색 근거 원문만 반환한다(백엔드 LLM 예산 미차감).
+
+    Args:
+        query: 자연어 검색어 (예: "적격심사 낙찰하한율 50억 미만")
+        top_k: 반환 건수 (기본 6, 최대 12)
+    """
+    hits = _get("/law/references", {"q": query, "top_k": max(1, min(top_k, 12))})
+    if _is_error(hits):
+        return hits
+    result: dict[str, Any] = {"hits": hits, "count": len(hits)}
+    if not hits:
+        result["hint"] = "0건 — 핵심 명사 위주로 짧게 재검색하거나 search_law로 조문을 직접 찾아라."
     return result
 
 
