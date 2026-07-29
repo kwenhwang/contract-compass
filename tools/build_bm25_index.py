@@ -20,12 +20,13 @@ from backend.config import get_settings  # noqa: E402
 _settings = get_settings()
 CHROMA_PATH = _settings.chroma_path
 INDEX_PATH = Path(CHROMA_PATH) / "bm25_index.pkl"
-# 공개 코퍼스 3원 체제(법령·행정규칙·공개 간행물) + faq(공개 간행물 Q&A 파생)
+# 공개 코퍼스 3원 체제(법령·행정규칙·공개 간행물).
+# faq는 제외(2026-07-29): public_guides 본문 그대로의 복제라 BM25 top-10 슬롯을
+# 자기복제가 잠식했음 — faq는 dense 전용으로 유지.
 TARGET_COLLECTIONS = [
     _settings.collection_public_guides,
     _settings.collection_admin_rules,
     _settings.collection_law_articles,
-    _settings.collection_faq,
 ]
 
 # 한글 명사/단어 + 영문 + 숫자. 조사·어미 제거 위해 단어 단위로
