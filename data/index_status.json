@@ -1,9 +1,0 @@
-{
-  "collections": {
-    "law_articles": {
-      "indexed_at": "2026-07-29T10:29:32",
-      "chunks": 4261,
-      "by": "index_laws.py"
-    }
-  }
-}
