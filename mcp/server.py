@@ -23,6 +23,7 @@ from typing import Any
 import httpx
 import jwt as _jwt
 from mcp.server import MCPServer
+from mcp.types import ToolAnnotations
 
 BASE_URL = os.environ.get("CONTRACT_COMPASS_URL", "http://127.0.0.1:8402").rstrip("/")
 API = f"{BASE_URL}/api/v1"
@@ -40,6 +41,9 @@ def _ask_headers() -> dict[str, str]:
          "iat": now, "exp": now + 300},
         secret, algorithm="HS256")
     return {"Authorization": f"Bearer {token}"}
+
+# 전 도구 읽기전용 — 어노테이션이 없으면 codex(비대화)가 승인 대상으로 보고 자동 취소한다(2026-07-29 실측)
+READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
 
 server = MCPServer(
     name="contract-compass",
@@ -68,7 +72,7 @@ def _post(path: str, body: dict[str, Any], headers: dict[str, str] | None = None
         return r.json()
 
 
-@server.tool()
+@server.tool(annotations=READ_ONLY)
 def decide_contract_method(
     contract_type: str,
     estimated_price: int,
@@ -131,7 +135,7 @@ def decide_contract_method(
     }
 
 
-@server.tool()
+@server.tool(annotations=READ_ONLY)
 def ask_contract_question(question: str) -> dict:
     """공공계약 Q&A — 법령·계약예규·공공계약 실무가이드 RAG 검색 + AI 답변.
 
@@ -152,7 +156,7 @@ def ask_contract_question(question: str) -> dict:
     }
 
 
-@server.tool()
+@server.tool(annotations=READ_ONLY)
 def search_law(query: str, top_k: int = 8) -> list[dict]:
     """법령 조문 검색 — 키워드 또는 조문번호로 조문 스니펫 반환(상위 top_k건).
 
@@ -173,7 +177,7 @@ def search_law(query: str, top_k: int = 8) -> list[dict]:
     return out
 
 
-@server.tool()
+@server.tool(annotations=READ_ONLY)
 def get_law_article(ref: str) -> dict:
     """법령 조문 원문 전체 조회.
 
