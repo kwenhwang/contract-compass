@@ -52,24 +52,71 @@ server = MCPServer(
         "한국 공공계약(국가계약법·지방계약법) 계약방법 결정 도우미. "
         "decide_contract_method로 결정론 룰엔진 판정을, ask_contract_question으로 "
         "법령 RAG 기반 Q&A를, search_law로 조문 원문을 조회한다. "
+        "도구는 한 번에 하나씩 순차 호출하라 — 특히 ask_contract_question을 병렬로 "
+        "여러 개 쏘면 지연이 누적돼 클라이언트 타임아웃으로 실패한다. "
+        "도구가 {'error': ...}를 반환하면 그 hint를 따르고, 도구 근거 없이 "
+        "자체 지식으로 법령 수치를 단정하지 마라. "
         "답변은 정보 제공용이며 법적 자문이 아니다."
     ),
     version="1.0.0",
 )
 
 
+def _friendly_error(exc: Exception) -> dict:
+    """백엔드 오류를 에이전트가 이해·중계할 수 있는 구조화 dict로.
+
+    기존엔 httpx 예외가 그대로 도구 실패로 터져 에이전트가 원인을 모른 채
+    재시도하다 자체 지식으로 조용히 폴백했다(2026-07-30 실측) — 원인·행동지침을 명시한다.
+    """
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        try:
+            detail = exc.response.json().get("detail", {})
+        except Exception:  # noqa: BLE001 — 비JSON 응답은 코드만 전달
+            detail = {}
+        code = detail.get("error") if isinstance(detail, dict) else None
+        if code == "daily_cap_exceeded":
+            return {"error": "daily_cap_exceeded", "status": status,
+                    "message": detail.get("message", "일일 AI 이용량 소진"),
+                    "hint": "오늘은 AI 답변 예산이 소진됨(매일 09:00 KST 리셋). "
+                            "이 사실을 사용자에게 알리고, search_law·get_law_article"
+                            "(LLM 미사용)로 조문 근거만 제시하라."}
+        if code == "rate_limit_exceeded":
+            return {"error": "rate_limit_exceeded", "status": status,
+                    "message": "요청 빈도 한도 초과",
+                    "hint": f"{detail.get('retry_after', 60)}초 후 재시도하라. 병렬 호출 금지."}
+        return {"error": "backend_error", "status": status,
+                "message": str(detail or exc)[:300],
+                "hint": "요청 인자를 바꿔도 같은 오류면 사용자에게 오류를 알려라."}
+    if isinstance(exc, httpx.TimeoutException):
+        return {"error": "timeout", "message": "백엔드 응답 지연(60초 초과)",
+                "hint": "도구를 병렬로 여러 개 호출하면 지연이 누적된다 — 한 번에 하나씩 순차 호출하라."}
+    return {"error": "connection_error", "message": str(exc)[:300],
+            "hint": "백엔드 미도달 — 잠시 후 1회만 재시도하고, 실패 지속 시 사용자에게 알려라."}
+
+
 def _get(path: str, params: dict[str, Any] | None = None) -> Any:
-    with httpx.Client(timeout=_TIMEOUT) as c:
-        r = c.get(f"{API}{path}", params=params)
-        r.raise_for_status()
-        return r.json()
+    try:
+        with httpx.Client(timeout=_TIMEOUT) as c:
+            r = c.get(f"{API}{path}", params=params)
+            r.raise_for_status()
+            return r.json()
+    except httpx.HTTPError as exc:
+        return _friendly_error(exc)
 
 
 def _post(path: str, body: dict[str, Any], headers: dict[str, str] | None = None) -> Any:
-    with httpx.Client(timeout=_TIMEOUT) as c:
-        r = c.post(f"{API}{path}", json=body, headers=headers)
-        r.raise_for_status()
-        return r.json()
+    try:
+        with httpx.Client(timeout=_TIMEOUT) as c:
+            r = c.post(f"{API}{path}", json=body, headers=headers)
+            r.raise_for_status()
+            return r.json()
+    except httpx.HTTPError as exc:
+        return _friendly_error(exc)
+
+
+def _is_error(d: Any) -> bool:
+    return isinstance(d, dict) and "error" in d
 
 
 @server.tool(annotations=READ_ONLY)
@@ -109,6 +156,8 @@ def decide_contract_method(
     if negotiation_reason:
         body["negotiation_reason"] = negotiation_reason
     d = _post("/filter/step1", body)
+    if _is_error(d):
+        return d
     # 에이전트가 소화하기 좋은 축약 형태로 정리
     return {
         "candidates": [
@@ -143,6 +192,8 @@ def ask_contract_question(question: str) -> dict:
         question: 자연어 질문 (예: "소액수의계약 금액 한도는?")
     """
     d = _post("/ask", {"question": question}, headers=_ask_headers())
+    if _is_error(d):
+        return d
     return {
         "answer": d.get("answer", ""),
         "sources": [
@@ -157,7 +208,7 @@ def ask_contract_question(question: str) -> dict:
 
 
 @server.tool(annotations=READ_ONLY)
-def search_law(query: str, top_k: int = 8) -> list[dict]:
+def search_law(query: str, top_k: int = 8) -> dict:
     """법령 조문 검색 — 키워드 또는 조문번호로 조문 스니펫 반환(상위 top_k건).
 
     전문이 필요하면 get_law_article(ref)로 이어서 조회.
@@ -167,6 +218,8 @@ def search_law(query: str, top_k: int = 8) -> list[dict]:
         top_k: 반환 건수 (기본 8, 최대 20)
     """
     hits = _get("/law/search", {"q": query})
+    if _is_error(hits):
+        return hits
     out = []
     for h in hits[: max(1, min(top_k, 20))]:
         h = dict(h)
@@ -174,7 +227,13 @@ def search_law(query: str, top_k: int = 8) -> list[dict]:
             if isinstance(h.get(k), str) and len(h[k]) > 400:
                 h[k] = h[k][:400] + "…"
         out.append(h)
-    return out
+    result: dict[str, Any] = {"hits": out, "count": len(out)}
+    if not out:
+        # 0건은 오류가 아니라 재질의 신호 — 에이전트가 "실패"로 오독하고 자체 지식으로
+        # 빠지지 않게 다음 행동을 명시한다(2026-07-30, 복합 쿼리 0건 6/12 실측).
+        result["hint"] = ("0건 — 짧은 단일 키워드('수의계약')나 '법령명 제N조' 형태로 "
+                          "재검색하거나, ask_contract_question으로 질문하라.")
+    return result
 
 
 @server.tool(annotations=READ_ONLY)
@@ -185,6 +244,8 @@ def get_law_article(ref: str) -> dict:
         ref: 정확한 조문 참조 (예: "국가계약법 시행령 제26조")
     """
     d = _get("/law/article", {"ref": ref})
+    if _is_error(d):
+        return d
     if isinstance(d.get("content"), str) and len(d["content"]) > 6000:
         d["content"] = d["content"][:6000] + "…(생략)"
     return d
