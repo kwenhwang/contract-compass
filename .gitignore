@@ -26,3 +26,4 @@ data/sessions.db-shm
 data/sessions.db-wal
 data/index_status.json
 data/chat_anon_quota.json
+data/law_freshness.json
