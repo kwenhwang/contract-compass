@@ -5,6 +5,7 @@ logs/
 data/sessions.db
 data/openai_daily_cap.json
 data/openai_daily_cap_internal.json
+data/rate_limiter.db*
 data/feedback_shots/
 data/source_docs/
 tools/laws/*.xml

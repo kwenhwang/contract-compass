@@ -145,3 +145,34 @@ def test_filter_step1_step2_have_rate_limit_dependency():
     assert src.count("record_llm_call(client_ip)") >= 2
     # 캡 소진 시 LLM 생략 신호가 두 스텝 모두에 배선
     assert src.count("LLMBudgetExhausted") >= 3
+
+
+def test_rate_limiter_shared_across_instances(tmp_path):
+    """SQLite 영속 — 별도 인스턴스(=다중 워커 시뮬레이션)가 같은 한도를 공유 (2026-07-30 P1)."""
+    db = str(tmp_path / "rl.db")
+    w1, w2 = rl.RateLimiter(db_path=db), rl.RateLimiter(db_path=db)
+    req = MagicMock()
+    req.headers = {}
+    req.client = MagicMock(host="198.51.100.9")
+    limits = {"minute": 3}
+    for _ in range(3):
+        w1.record(w1.check(req, limits))
+    # 다른 워커(w2)에서도 같은 IP는 즉시 차단되어야 함
+    with pytest.raises(HTTPException) as ei:
+        w2.check(req, limits)
+    assert ei.value.status_code == 429
+    assert w2.stats()["blocked_total"] == 1
+
+
+def test_rate_limiter_fail_open_on_storage_error(tmp_path):
+    """저장소 장애 시 요청을 막지 않는다(fail-open) — 한도는 보호 장치."""
+    lim = rl.RateLimiter(db_path=str(tmp_path / "rl.db"))
+    lim._connect().close()
+    lim._local.conn = None  # 다음 접근에서 재연결하도록 초기화
+    import unittest.mock as _m
+    req = MagicMock()
+    req.headers = {}
+    req.client = MagicMock(host="198.51.100.10")
+    with _m.patch.object(lim, "_connect", side_effect=RuntimeError("db down")):
+        assert lim.check(req, {"minute": 1}) == "198.51.100.10"  # 차단 대신 통과
+        lim.record("198.51.100.10")  # 예외 전파 없음

@@ -1,4 +1,4 @@
-"""자체 in-memory per-IP rate limiter (외부 의존 0).
+"""자체 per-IP rate limiter — SQLite(WAL) 영속, 다중 워커 공유 (외부 서비스 의존 0).
 
 LLM 호출 비용·시간 보호 — Cohere rerank·Gemini complete 호출당 3~10s + API 비용.
 무제한 호출 시 비용·서버 부하 노출되므로 IP별 sliding window 제한.
@@ -16,9 +16,10 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sqlite3
+import threading
 import time
 import urllib.request
-from collections import defaultdict, deque
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
@@ -43,22 +44,34 @@ _WHITELIST = set(
 )
 
 
-class _IPCounter:
-    __slots__ = ("times",)
-    def __init__(self) -> None:
-        self.times: deque[float] = deque()
-    def trim(self, now: float, max_window: float) -> None:
-        while self.times and self.times[0] < now - max_window:
-            self.times.popleft()
-    def count_within(self, now: float, window: float) -> int:
-        return sum(1 for t in self.times if t >= now - window)
-
-
 class RateLimiter:
-    def __init__(self) -> None:
-        self._ips: dict[str, _IPCounter] = defaultdict(_IPCounter)
-        self._lock = Lock()
-        self._blocked_count: dict[str, int] = defaultdict(int)
+    """IP별 sliding window — SQLite(WAL) 영속 (2026-07-30 P1: 다중 워커 전환).
+
+    기존 인메모리(deque) 구현은 워커 간 상태가 갈라져 workers=1을 강제했다.
+    카운터를 SQLite 파일로 옮겨 여러 uvicorn 워커가 같은 한도를 공유한다.
+    - WAL + busy_timeout으로 동시 접근 안전. 커넥션은 스레드로컬(FastAPI 스레드풀 대응).
+    - 저장소 장애는 fail-open(요청 허용 + warning) — 한도는 보호 장치이지 기능이 아님.
+    - 만료 행 정리는 record() 시 수행(일 윈도우 밖 삭제, 인덱스 타서 저렴).
+    """
+
+    def __init__(self, db_path: str | None = None) -> None:
+        self._db_path = db_path or str(BASE_DIR / "data" / "rate_limiter.db")
+        Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
+        self._local = threading.local()
+        with self._connect() as c:
+            c.execute("CREATE TABLE IF NOT EXISTS llm_hits (ip TEXT NOT NULL, ts REAL NOT NULL)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_hits_ip_ts ON llm_hits(ip, ts)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_hits_ts ON llm_hits(ts)")
+            c.execute("CREATE TABLE IF NOT EXISTS blocked (ip TEXT PRIMARY KEY, count INTEGER NOT NULL)")
+
+    def _connect(self):
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(self._db_path, timeout=3.0)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=3000")
+            self._local.conn = conn
+        return conn
 
     def _get_raw_ip(self, request: Request) -> str:
         # XFF의 루프백 항목은 신뢰하지 않는다 — 외부 클라이언트가 "X-Forwarded-For:
@@ -79,15 +92,18 @@ class RateLimiter:
         if ip in _WHITELIST:
             return ip
         now = time.time()
-        max_w = max(WINDOWS.values())
-        with self._lock:
-            counter = self._ips[ip]
-            counter.trim(now, max_w)
+        try:
+            c = self._connect()
             for key, max_calls in limits.items():
                 window_s = WINDOWS[key]
-                cur = counter.count_within(now, window_s)
+                cur = c.execute(
+                    "SELECT COUNT(*) FROM llm_hits WHERE ip = ? AND ts >= ?",
+                    (ip, now - window_s)).fetchone()[0]
                 if cur >= max_calls:
-                    self._blocked_count[ip] += 1
+                    with c:
+                        c.execute(
+                            "INSERT INTO blocked(ip, count) VALUES(?, 1) "
+                            "ON CONFLICT(ip) DO UPDATE SET count = count + 1", (ip,))
                     raise HTTPException(
                         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                         detail={
@@ -97,26 +113,42 @@ class RateLimiter:
                         },
                         headers={"Retry-After": str(window_s)},
                     )
+        except HTTPException:
+            raise
+        except Exception:  # noqa: BLE001 — 저장소 장애는 fail-open(한도는 보호 장치)
+            logger.warning("rate limiter 저장소 조회 실패 — fail-open", exc_info=True)
         return ip
 
     def record(self, ip: str) -> None:
         if ip in _WHITELIST:
             return
-        with self._lock:
-            self._ips[ip].times.append(time.time())
+        now = time.time()
+        try:
+            c = self._connect()
+            with c:
+                c.execute("INSERT INTO llm_hits(ip, ts) VALUES(?, ?)", (ip, now))
+                # 만료 행 정리 — 최대 윈도우(일) 밖은 어떤 한도 계산에도 안 쓰인다
+                c.execute("DELETE FROM llm_hits WHERE ts < ?", (now - max(WINDOWS.values()),))
+        except Exception:  # noqa: BLE001
+            logger.warning("rate limiter 기록 실패 — 카운트 유실(soft)", exc_info=True)
 
     def stats(self) -> dict:
         now = time.time()
-        with self._lock:
+        try:
+            c = self._connect()
+            tracked = c.execute("SELECT COUNT(DISTINCT ip) FROM llm_hits").fetchone()[0]
+            active = c.execute(
+                "SELECT COUNT(DISTINCT ip) FROM llm_hits WHERE ts >= ?",
+                (now - WINDOWS["hour"],)).fetchone()[0]
+            blocked = dict(c.execute("SELECT ip, count FROM blocked").fetchall())
             return {
-                "tracked_ips": len(self._ips),
-                "blocked_total": sum(self._blocked_count.values()),
-                "blocked_per_ip": dict(self._blocked_count),
-                "active_last_hour": sum(
-                    1 for c in self._ips.values()
-                    if c.times and c.times[-1] >= now - WINDOWS["hour"]
-                ),
+                "tracked_ips": tracked,
+                "blocked_total": sum(blocked.values()),
+                "blocked_per_ip": blocked,
+                "active_last_hour": active,
             }
+        except Exception:  # noqa: BLE001
+            return {"tracked_ips": 0, "blocked_total": 0, "blocked_per_ip": {}, "active_last_hour": 0}
 
 
 def _send_telegram_alert(text: str) -> None:

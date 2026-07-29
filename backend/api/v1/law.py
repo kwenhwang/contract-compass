@@ -198,7 +198,10 @@ def search_references(
     IP 슬라이딩 윈도우 한도는 동일 적용.
     """
     from backend.services.rate_limiter import get_rate_limiter, LIMITS_LLM
-    get_rate_limiter().check(request, LIMITS_LLM)
+    limiter = get_rate_limiter()
+    # check만 하면 카운트가 안 쌓여 한도가 무력화된다(2026-07-30 실측) — 무LLM이지만
+    # 임베딩 비용·외부 API 보호를 위해 요청 자체를 계상한다.
+    limiter.record(limiter.check(request, LIMITS_LLM))
     chunks = rag.search_all(q.strip(), top_k=top_k)
     return [
         {
@@ -390,7 +393,8 @@ def search_cases(
     '부정당업자 제한', '유찰 수의계약'처럼 핵심 명사 위주가 잘 잡힌다.
     """
     from backend.services.rate_limiter import get_rate_limiter, LIMITS_LLM
-    get_rate_limiter().check(request, LIMITS_LLM)
+    limiter = get_rate_limiter()
+    limiter.record(limiter.check(request, LIMITS_LLM))  # check만으론 카운트 미적립 — 계상 필수
     oc = _law_oc()
     out: list[dict] = []
     kinds = ["prec", "expc"] if kind == "all" else [kind]
@@ -428,7 +432,8 @@ def get_case(
 ) -> dict:
     """판례/해석례 본문 — 판시사항·판결요지·참조조문(판례), 질의요지·회답·이유(해석례)."""
     from backend.services.rate_limiter import get_rate_limiter, LIMITS_LLM
-    get_rate_limiter().check(request, LIMITS_LLM)
+    limiter = get_rate_limiter()
+    limiter.record(limiter.check(request, LIMITS_LLM))  # check만으론 카운트 미적립 — 계상 필수
     xml = _drf_get("lawService.do", {"OC": _law_oc(), "target": kind,
                                      "ID": case_id, "type": "XML"})
     def _f(tag: str, limit: int = 2500) -> str:
