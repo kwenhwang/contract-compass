@@ -35,10 +35,27 @@ _USAGE_PREFIXES = (
 )
 
 
+# CF 엣지 캐시 대상(2026-07-30 P2): 결정론 읽기 GET — 성공 응답에만 Cache-Control을 실어
+# CF 캐시 룰(contract.naru.build /api/v1/law/*)이 엣지에서 재사용하게 한다.
+# 조문(article)은 재색인 전까지 불변에 가까워 1일, 검색·판례 프록시는 1시간.
+# 캐시 히트는 오리진(1 vCPU)에 도달하지 않아 레이트리밋·임베딩 비용도 안 든다.
+_EDGE_CACHE_TTL = {
+    "/api/v1/law/article": 86400,
+    "/api/v1/law/search": 3600,
+    "/api/v1/law/references": 3600,
+    "/api/v1/law/cases": 3600,
+    "/api/v1/law/case": 86400,  # 판례 본문은 사실상 불변
+}
+
+
 @app.middleware("http")
 async def _usage_middleware(request: Request, call_next):
     response = await call_next(request)
     path = request.url.path
+    if request.method == "GET" and response.status_code == 200:
+        ttl = _EDGE_CACHE_TTL.get(path)
+        if ttl:
+            response.headers["Cache-Control"] = f"public, max-age={ttl}"
     if response.status_code < 400 and any(path.startswith(p) for p in _USAGE_PREFIXES):
         try:
             from datetime import datetime, timezone
