@@ -36,9 +36,13 @@ server = MCPServer(
         "한국 공공계약(국가계약법·지방계약법) 계약방법 결정 도우미. "
         "decide_contract_method로 결정론 룰엔진 판정을, search_law·get_law_article로 "
         "법령 조문을, search_references로 예규·적격심사 세부기준·실무가이드까지 "
-        "전 코퍼스를 조회한다. 모든 도구는 LLM을 쓰지 않는다 — 답변 합성은 "
-        "네(클라이언트)가 도구 근거로 직접 하라. "
-        "도구는 한 번에 하나씩 순차 호출하라(병렬 다발 호출은 지연 누적으로 타임아웃). "
+        "전 코퍼스를 조회한다. 분쟁·처분·해석 다툼 질문은 search_cases/get_case로 "
+        "판례·법령해석례(law.go.kr 실시간)를 찾아 근거를 보강하라. "
+        "모든 도구는 LLM을 쓰지 않으며 호출당 1~3초다 — 답변 합성은 "
+        "네(클라이언트)가 도구 근거로 직접 하라. 판례·해석례가 필요한 질문인지는 "
+        "네가 판단하되, 인용했다면 판례의 참조조문을 get_law_article로 교차확인하라. "
+        "2~3개 병렬 호출은 무방하나 다발(4개 이상 동시) 호출은 피하라"
+        "(단일 워커 백엔드라 대기 누적으로 타임아웃). "
         "도구가 {'error': ...}를 반환하면 그 hint를 따르고, 도구 근거 없이 "
         "자체 지식으로 법령 수치를 단정하지 마라. "
         "답변은 정보 제공용이며 법적 자문이 아니다."
@@ -220,6 +224,38 @@ def search_references(query: str, top_k: int = 6) -> dict:
     if not hits:
         result["hint"] = "0건 — 핵심 명사 위주로 짧게 재검색하거나 search_law로 조문을 직접 찾아라."
     return result
+
+
+@server.tool(annotations=READ_ONLY)
+def search_cases(query: str, top_k: int = 5, kind: str = "all") -> dict:
+    """판례·법령해석례 검색 — law.go.kr 실시간 조회(항상 현행). LLM 미사용.
+
+    분쟁·처분취소·해석 다툼("~해도 되나", "~취소될 수 있나")에 조문만으로 부족할 때
+    쓰라. 본문은 get_case(kind, case_id)로 이어서 조회.
+
+    Args:
+        query: 핵심 명사 위주 검색어 (예: "부정당업자 제한", "유찰 수의계약")
+        top_k: 종류당 반환 건수 (기본 5, 최대 10)
+        kind: "prec"(법원 판례) | "expc"(법제처 법령해석례) | "all"(둘 다, 기본)
+    """
+    hits = _get("/law/cases", {"q": query, "top_k": max(1, min(top_k, 10)), "kind": kind})
+    if _is_error(hits):
+        return hits
+    result: dict[str, Any] = {"hits": hits, "count": len(hits)}
+    if not hits:
+        result["hint"] = "0건 — 더 짧은 핵심어(예: '지체상금', '담합')로 재검색하라."
+    return result
+
+
+@server.tool(annotations=READ_ONLY)
+def get_case(kind: str, case_id: str) -> dict:
+    """판례/해석례 본문 조회 — 판시사항·판결요지·참조조문(판례) 또는 질의요지·회답·이유(해석례).
+
+    Args:
+        kind: "prec" | "expc" (search_cases 결과의 kind)
+        case_id: search_cases 결과의 case_id
+    """
+    return _get("/law/case", {"kind": kind, "case_id": case_id})
 
 
 @server.tool(annotations=READ_ONLY)

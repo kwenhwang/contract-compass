@@ -345,3 +345,101 @@ def search_law(q: str = Query(..., min_length=1, max_length=200)) -> list[LawSea
             pass
 
     return results
+
+
+# ── 판례·법령해석례 라이브 프록시 (law.go.kr DRF, 2026-07-30) ────────────────
+# 코퍼스 인덱싱 대신 실시간 조회 — 항상 현행, 저장·재색인 부담 0. LLM 미사용.
+# MCP search_cases/get_case 도구가 사용한다. 외부 API 장애는 502로 정직하게 전달.
+_LAW_DRF = "http://www.law.go.kr/DRF"
+
+
+def _law_oc() -> str:
+    # run.sh는 .env를 export하지 않는다 — 키는 pydantic Settings(.env 로드)에서 읽는다.
+    oc = (get_settings().law_api_key or "").strip()
+    if not oc:
+        raise HTTPException(503, "LAW_API_KEY 미설정 — 판례 조회 비활성")
+    return oc
+
+
+def _drf_get(path: str, params: dict) -> str:
+    import httpx
+    try:
+        with httpx.Client(timeout=httpx.Timeout(15.0, connect=5.0)) as c:
+            r = c.get(f"{_LAW_DRF}/{path}", params=params)
+            r.raise_for_status()
+            return r.text
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, f"law.go.kr 조회 실패: {type(exc).__name__}")
+
+
+def _cdata(tag: str, block: str) -> str:
+    m = re.search(rf"<{tag}>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</{tag}>", block, re.S)
+    return (m.group(1).strip() if m else "").replace("<br/>", " ")
+
+
+@router.get("/cases")
+def search_cases(
+    request: Request,
+    q: str = Query(..., min_length=2, max_length=100),
+    top_k: int = Query(5, ge=1, le=10),
+    kind: str = Query("all", pattern="^(prec|expc|all)$"),
+) -> list[dict]:
+    """판례(prec)·법령해석례(expc) 검색 — 사건명·기관·일자·일련번호 목록.
+
+    본문은 /law/case?kind=&case_id= 로 이어서 조회. 검색어는 사건명 기준이므로
+    '부정당업자 제한', '유찰 수의계약'처럼 핵심 명사 위주가 잘 잡힌다.
+    """
+    from backend.services.rate_limiter import get_rate_limiter, LIMITS_LLM
+    get_rate_limiter().check(request, LIMITS_LLM)
+    oc = _law_oc()
+    out: list[dict] = []
+    kinds = ["prec", "expc"] if kind == "all" else [kind]
+    for k in kinds:
+        xml = _drf_get("lawSearch.do", {"OC": oc, "target": k, "type": "XML",
+                                        "display": top_k, "query": q})
+        for block in re.findall(rf"<{k} id=.*?</{k}>", xml, re.S):
+            if k == "prec":
+                out.append({
+                    "kind": "prec",
+                    "case_id": _cdata("판례일련번호", block),
+                    "title": _cdata("사건명", block),
+                    "org": _cdata("법원명", block),
+                    "case_no": _cdata("사건번호", block),
+                    "date": _cdata("선고일자", block),
+                })
+            else:
+                out.append({
+                    "kind": "expc",
+                    "case_id": _cdata("법령해석례일련번호", block),
+                    "title": _cdata("안건명", block),
+                    # 검색 응답은 회신기관/회신일자, 본문 응답은 해석기관/해석일자 — 명칭이 다르다
+                    "org": _cdata("회신기관명", block) or _cdata("해석기관명", block),
+                    "case_no": _cdata("안건번호", block),
+                    "date": _cdata("회신일자", block) or _cdata("해석일자", block),
+                })
+    return out
+
+
+@router.get("/case")
+def get_case(
+    request: Request,
+    kind: str = Query(..., pattern="^(prec|expc)$"),
+    case_id: str = Query(..., min_length=1, max_length=20),
+) -> dict:
+    """판례/해석례 본문 — 판시사항·판결요지·참조조문(판례), 질의요지·회답·이유(해석례)."""
+    from backend.services.rate_limiter import get_rate_limiter, LIMITS_LLM
+    get_rate_limiter().check(request, LIMITS_LLM)
+    xml = _drf_get("lawService.do", {"OC": _law_oc(), "target": kind,
+                                     "ID": case_id, "type": "XML"})
+    def _f(tag: str, limit: int = 2500) -> str:
+        v = _cdata(tag, xml)
+        return v[:limit] + ("…(생략)" if len(v) > limit else "")
+    if kind == "prec":
+        return {"kind": "prec", "case_id": case_id,
+                "title": _f("사건명"), "org": _f("법원명"), "case_no": _f("사건번호"),
+                "date": _f("선고일자"), "issue": _f("판시사항"),
+                "summary": _f("판결요지"), "referenced_laws": _f("참조조문", 800)}
+    return {"kind": "expc", "case_id": case_id,
+            "title": _f("안건명"), "org": _f("해석기관명"), "case_no": _f("안건번호"),
+            "date": _f("해석일자"), "question": _f("질의요지"),
+            "answer": _f("회답"), "reasoning": _f("이유", 4000)}
