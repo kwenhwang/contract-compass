@@ -213,6 +213,7 @@ async def step1(
     # 규칙엔진으로 점수 계산 후 LLM key_params를 보정 (LLM 환산 오류 방지)
     rule_by_id = {r["rule_id"]: r for r in matched_rules}
     candidates = []
+    seen_rule_ids: set[str] = set()
     for i, c in enumerate(parsed.get("candidates", [])):
         key_params = dict(c.get("key_params", {}))
         rule = rule_by_id.get(c.get("rule_id", ""))
@@ -229,6 +230,21 @@ async def step1(
         rule_legal_basis = (rule.get("legal_basis", []) if rule else [])
         # F8-1 재정정: LLM이 method를 자체 결정하지 못하게 — 룰의 method 우선 (실무 표현 일관 유지)
         rule_method = _rule_method(rule, req.estimated_price) if rule else c.get("method", "")
+        # 2026-07-29 (Codex 적대검증): LLM이 같은 rule_id로 '대안'(일반경쟁·지명경쟁 등)을
+        # 2·3순위 후보로 내는 경우, 무조건 룰 method로 덮으면 요약("일반경쟁 선택 가능")과
+        # method("소액수의계약")가 모순된다. 룰의 alternatives에 등록된 method와 일치하는
+        # LLM method는 그대로 인정한다(환각 차단 원칙 유지 — 등록 외 method는 여전히 강제).
+        if rule and c.get("rule_id", "") in seen_rule_ids:
+            llm_method = (c.get("method") or "").strip()
+            alt_methods = {
+                (a.get("method") or "").strip()
+                for a in (rule.get("result", {}).get("alternatives") or [])
+                if isinstance(a, dict)
+            }
+            if llm_method and any(llm_method.split("(")[0].strip() == m.split("(")[0].strip()
+                                  for m in alt_methods if m):
+                rule_method = llm_method
+        seen_rule_ids.add(c.get("rule_id", ""))
         candidates.append(Candidate(
             rank=c.get("rank", i + 1),
             method=rule_method,
@@ -400,6 +416,17 @@ async def step1(
             )
         except Exception:
             step1_decision_pack = {}
+
+    # 2026-07-29 (Codex 적대검증): 국제입찰 임계값(7.1억/265억)은 공기업·준정부 고시금액 —
+    # 국가기관·지자체 요청에 INTL 계열 룰이 후보로 뜨면 기관유형별 상이 안내를 병기한다.
+    if req.org_type != "public_corp" and step1_decision_pack:
+        _top3_ids = {r["rule_id"] for r in matched_rules[:3]}
+        if any("INTL" in rid or rid == "PRD_006" for rid in _top3_ids):
+            step1_decision_pack["human_explanation"] = (
+                step1_decision_pack.get("human_explanation", "")
+                + " ※ 국제입찰 고시금액은 기관유형별로 다릅니다(본 안내는 공기업·준정부 기준). "
+                  "국가기관·지자체는 기획재정부 고시금액을 확인하세요."
+            ).strip()
 
     response = Step1Response(
         session_id=session_id,

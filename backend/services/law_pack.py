@@ -182,11 +182,16 @@ def build_decision_pack(
     # 2. 룰엔진 자연어 설명 — 금액·계약유형 외에 매칭된 모든 조건
     #    (전문분야·중기간·지역·실적·사유)을 자연어로 풀어 설명.
     ct_label = {"construction": "공사", "service": "용역", "product": "물품"}.get(contract_type, contract_type)
-    price_text = (
-        f"{estimated_price // 100_000_000}억원" if estimated_price >= 100_000_000
-        else f"{estimated_price // 10_000_000 * 1000}만원" if estimated_price >= 10_000_000
-        else f"{estimated_price:,}원"
-    )
+    # 2026-07-29 (Codex 적대검증): 정수 절삭으로 2.3억→"2억원" 표기되던 것 정정 —
+    # 경계값 검증을 방해하지 않도록 소수 첫째 자리까지 보존.
+    if estimated_price >= 100_000_000:
+        _eok = estimated_price / 100_000_000
+        price_text = f"{_eok:g}억원" if _eok != int(_eok) else f"{int(_eok)}억원"
+    elif estimated_price >= 10_000_000:
+        _man = estimated_price / 10_000
+        price_text = f"{_man:,.0f}만원"
+    else:
+        price_text = f"{estimated_price:,}원"
     # 매칭된 조건 자연어로 — rule.conditions + additional_conditions 모두 반영
     rule_conds = rule.get("conditions", {})
     extra_facts: list[str] = []
@@ -271,8 +276,14 @@ def build_decision_pack(
             + f"실무 재량 선택: {' · '.join(alt_methods[:3])}. {law_text}"
         ).strip()
     else:
+        # 수의계약 등은 임의규정("할 수 있다")이라 "선택지가 없다"고 단정하면 오도 —
+        # 일반경쟁입찰은 법령상 언제나 선택 가능함을 병기한다. (Codex 적대검증 반영)
+        _always_open = (
+            "" if method.startswith("일반경쟁")
+            else " (일반경쟁입찰은 법령상 언제나 선택 가능)"
+        )
         human_explanation = (
-            f"추정가격 {price_text} · {cond_text} → **{method} 외에 다른 선택지가 없습니다.** "
+            f"추정가격 {price_text} · {cond_text} → **{method}** 적용{_always_open}. "
             + (f"**왜?** {reason_text}. " if reason_text else "")
             + law_text
         ).strip()
