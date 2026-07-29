@@ -114,9 +114,12 @@ async def step1(
     llm_quota: tuple = Depends(rate_limit_llm_soft),
 ):
     # 캡 소진이어도 결정론 판정은 계속 — llm_allowed=False면 LLM 설명만 생략(룰 폴백).
+    # skip_llm(2026-07-30): MCP 등 에이전트 클라이언트는 자체 LLM으로 설명을 합성하므로
+    # 백엔드 LLM 보조설명을 명시적으로 생략(예산 0 소모)할 수 있다.
     client_ip, llm_allowed = llm_quota
+    llm_allowed = llm_allowed and not req.skip_llm
     _t0 = time.monotonic()
-    params = req.model_dump()
+    params = req.model_dump(exclude={"skip_llm"})
     # 공사 전문분야 미입력 시 일반건설로 기본값 설정 (general CST 규칙이 construction_specialty="general" 조건을 가짐)
     # F15 (2026-06-09): 'other' (기타공사)도 general로 fallback — 룰 매칭 보장 (specialty_other 사용자 입력은 보존)
     if params.get("contract_type") == "construction":
@@ -185,7 +188,9 @@ async def step1(
     try:
         if _cached is None:
             if not llm_allowed:
-                raise LLMBudgetExhausted("일일 LLM 상한 도달 — 룰엔진 단독 응답")
+                raise LLMBudgetExhausted(
+                    "skip_llm 요청 — 룰엔진 단독 응답" if req.skip_llm
+                    else "일일 LLM 상한 도달 — 룰엔진 단독 응답")
             record_llm_call(client_ip)  # 실제 LLM 호출(캐시 미스)만 카운트 — IP별 + 스코프별 일일 상한
             raw = await llm.complete(system_prompt, user_msg, json_mode=True)
             parsed = json.loads(raw)

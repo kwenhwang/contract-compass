@@ -1,10 +1,11 @@
 """법령 조문 원문 조회 — 법령 조문 컬렉션에서 단일 조문 조회."""
 import re
 from functools import lru_cache
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from pydantic import BaseModel
 import chromadb
 
+from backend.api.deps import get_rag_service
 from backend.config import get_settings
 
 router = APIRouter(prefix="/law", tags=["law"])
@@ -179,6 +180,36 @@ def get_article(ref: str = Query(..., min_length=2, max_length=100)):
         content=_clean_markers(doc),
         law_ref=meta.get("law_ref", ""),
     )
+
+
+@router.get("/references")
+def search_references(
+    request: Request,
+    q: str = Query(..., min_length=2, max_length=200),
+    top_k: int = Query(6, ge=1, le=12),
+    rag=Depends(get_rag_service),
+) -> list[dict]:
+    """전 코퍼스 통합 검색(법령+계약예규+조달청·행안부 세부기준+실무가이드) — LLM 미사용.
+
+    MCP·에이전트용(2026-07-30): /ask는 검색 후 OpenAI 생성까지 수행해 일일 캡을
+    차감하지만, 에이전트 클라이언트는 자신이 LLM이므로 검색 청크 원문만 있으면 된다.
+    /law/search는 법령(law_articles) 전용이라 예규·세부기준 코퍼스(admin_rules 등)에
+    닿는 무LLM 경로가 없던 공백을 메운다. 임베딩(Gemini)만 사용 — OpenAI 캡 미차감,
+    IP 슬라이딩 윈도우 한도는 동일 적용.
+    """
+    from backend.services.rate_limiter import get_rate_limiter, LIMITS_LLM
+    get_rate_limiter().check(request, LIMITS_LLM)
+    chunks = rag.search_all(q.strip(), top_k=top_k)
+    return [
+        {
+            "source": c.get("document_id") or "",
+            "section": c.get("section_title") or "",
+            "source_type": c.get("source_type") or "",
+            "excerpt": _clean_markers((c.get("content") or "")[:600]),
+            "relevance": round(float(c.get("relevance_score") or 0), 3),
+        }
+        for c in chunks[: top_k * 2]
+    ]
 
 
 @router.get("/search", response_model=list[LawSearchHit])

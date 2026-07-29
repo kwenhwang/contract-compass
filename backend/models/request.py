@@ -73,6 +73,9 @@ class Step1Request(BaseModel):
     # 단순노무용역 여부 (시행규칙 제23조의3 — 경비·청소·시설물관리 등).
     # 소액수의 낙찰하한율이 일반 용역(87.995%)과 다른 89.995% 적용.
     is_simple_labor: bool = False
+    # 2026-07-30: LLM 보조설명 생략 요청 — MCP 등 에이전트 클라이언트는 자체 LLM으로
+    # 설명을 합성하므로 백엔드 OpenAI 호출(일일 캡 차감)이 불필요. 판정은 동일(결정론).
+    skip_llm: bool = False
 
 
 class Step2Request(BaseModel):
