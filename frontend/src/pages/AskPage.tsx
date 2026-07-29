@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { submitFeedback } from '../api/client'
 import { getDeviceId } from '../lib/deviceId'
+import { authHeaders, login } from '../lib/auth'
 import AnnotatedText from '../components/AnnotatedText'
 import { useSourceDrawer, SourceInlinePanel } from '../components/SourceDrawer'
 import { tone } from '../components/designer'
@@ -20,6 +21,8 @@ interface Message {
   // 2026-06-01: 답변 신뢰도 — confidence 경고 + 환각 의심 조문
   unverifiedCitations?: string[]
   avgRelevance?: number | null
+  // 2026-07-29: 익명 무료 소진/토큰 만료 — 로그인 유도 버튼 표시
+  loginRequired?: boolean
 }
 
 const SESSION_ID = `qna-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -298,6 +301,14 @@ function AssistantBubble({
           ) : (
             <span style={{ whiteSpace: 'pre-wrap' }}>{msg.text}</span>
           )}
+          {msg.loginRequired && (
+            <button
+              onClick={login}
+              style={{ display: 'block', marginTop: 10, padding: '8px 16px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: 700 }}
+            >
+              Google로 로그인
+            </button>
+          )}
         </div>
 
         {!msg.loading && msg.text && msg.question && (
@@ -446,9 +457,21 @@ export default function AskPage({ onClose }: { onClose: () => void }) {
       // SSE 스트리밍 — 글자 단위 실시간 출력
       const resp = await fetch('/api/v1/ask/stream', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Device-Id': getDeviceId() },
+        headers: { 'Content-Type': 'application/json', 'X-Device-Id': getDeviceId(), ...authHeaders() },
         body: JSON.stringify({ question: q }),
       })
+      if (resp.status === 401) {
+        // 익명 무료 소진/토큰 만료 (2026-07-29) — 로그인 유도
+        let msg = '계속 이용하려면 Google 로그인이 필요합니다.'
+        try { msg = (await resp.json()).detail?.message || msg } catch { /* ignore */ }
+        setMessages((prev) =>
+          prev.map((m, i) => i === prev.length - 1
+            ? { role: 'assistant', text: msg, loginRequired: true }
+            : m
+          )
+        )
+        return
+      }
       if (!resp.ok || !resp.body) throw new Error('stream failed')
       const reader = resp.body.getReader()
       const decoder = new TextDecoder()

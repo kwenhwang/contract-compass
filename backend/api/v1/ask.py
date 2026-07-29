@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from backend.api.deps import get_rag_service, get_llm
 from backend.services.rag_service import RAGService
 from backend.services.llm.base import LLMProvider
+from backend.services.chat_access import chat_access
 from backend.services.rate_limiter import rate_limit_llm, record_llm_call
 
 # 2026-07-20 fail-closed: 검색 근거 0건이면 LLM을 호출하지 않고 이 결정론 응답을 반환.
@@ -584,6 +585,7 @@ async def ask_question(
     rag: RAGService = Depends(get_rag_service),
     llm: LLMProvider = Depends(get_llm),
     client_ip: str = Depends(rate_limit_llm),
+    access: dict = Depends(chat_access),  # 익명 2회/일 → 로그인 (2026-07-29)
 ) -> AskResponse:
     # 캐시 조회 — 동일 질문 즉시 응답 (rate limit 카운트 안 함)
     cached = _cache_get(req.question)
@@ -703,6 +705,7 @@ async def ask_stream(
     rag: RAGService = Depends(get_rag_service),
     llm: LLMProvider = Depends(get_llm),
     client_ip: str = Depends(rate_limit_llm),
+    access: dict = Depends(chat_access),  # 익명 2회/일 → 로그인 (2026-07-29)
 ):
     """SSE 스트리밍 응답 — 글자 단위 실시간 출력. sources는 마지막에 전송."""
     # 캐시 hit 시 한 번에 반환 (스트리밍 불필요, rate limit 카운트 안 함)

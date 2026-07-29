@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useWizardStore } from '../store/wizardStore'
 import { getDeviceId } from '../lib/deviceId'
+import { authHeaders, login } from '../lib/auth'
 import Icon from './Icon'
 
 type ChatMsg = {
@@ -22,6 +23,7 @@ type ChatMsg = {
     matched_question?: string
   }>
   streaming?: boolean
+  loginRequired?: boolean
 }
 
 const STORAGE_OPEN = 'cc_chat_sidebar_open'
@@ -80,11 +82,19 @@ export default function ChatSidebar() {
     try {
       const resp = await fetch('/api/v1/ask/stream', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Device-Id': getDeviceId() },
+        headers: { 'Content-Type': 'application/json', 'X-Device-Id': getDeviceId(), ...authHeaders() },
         body: JSON.stringify({ question: q, context: buildContext() }),
       })
       if (!resp.ok || !resp.body) {
         const detail = await resp.text().catch(() => '')
+        // 익명 무료 소진/토큰 만료 (2026-07-29) — 로그인 유도
+        if (resp.status === 401) {
+          let msg = '계속 이용하려면 Google 로그인이 필요합니다.'
+          try { msg = JSON.parse(detail).detail?.message || msg } catch {}
+          setMessages((m) => m.map((x) => x.id === asstId
+            ? { ...x, text: msg, streaming: false, loginRequired: true } : x))
+          return
+        }
         const errText = resp.status === 429
           ? '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.'
           : `오류 (${resp.status}). ${detail.slice(0, 100)}`
@@ -162,6 +172,14 @@ export default function ChatSidebar() {
                 <div className="dt-chat-bubble">
                   {m.text}
                   {m.streaming && <span className="dt-chat-cursor">▍</span>}
+                  {m.loginRequired && (
+                    <button
+                      onClick={login}
+                      style={{ display: 'block', marginTop: 8, padding: '6px 12px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: 600 }}
+                    >
+                      Google로 로그인
+                    </button>
+                  )}
                 </div>
                 {m.sources && m.sources.length > 0 && (
                   <div className="dt-chat-sources">
