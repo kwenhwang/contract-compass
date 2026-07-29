@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useWizardStore } from './store/wizardStore'
 import Icon from './components/Icon'
 import ChatSidebar from './components/ChatSidebar'
@@ -10,7 +10,7 @@ import AdminPage from './pages/AdminPage'
 import AskPage from './pages/AskPage'
 import GlossaryPage from './pages/GlossaryPage'
 // 룰트리는 mermaid(대용량) 의존 → 열 때만 지연 로드(초기 번들 경량 유지)
-const RuleTreePage = lazy(() => import('./pages/RuleTreePage'))
+// 룰 결정트리는 비공개 전환(2026-07-29) — RuleTreePage 진입점 제거, API도 admin 전용
 import HomeDashboard from './pages/HomeDashboard'
 import { SourceDrawerProvider } from './components/SourceDrawer'
 import { submitFeedback } from './api/client'
@@ -447,7 +447,6 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false)
   const [showAsk, setShowAsk] = useState(false)
   const [showGlossary, setShowGlossary] = useState(false)
-  const [showRuleTree, setShowRuleTree] = useState(false)
   const [showFeedback, setShowFeedback] = useState(false)
   // 홈/대시보드 — 해시 없음('') 또는 '#home'이 홈, 위저드는 '#decide'로 진입.
   const isHomeHash = (h: string) => h === '' || h === '#home'
@@ -537,9 +536,6 @@ export default function App() {
               <button onClick={() => setShowGlossary(true)} className="text-xs text-purple-500 hover:text-purple-700 font-semibold underline">
                 📖 용어사전
               </button>
-              <button onClick={() => setShowRuleTree(true)} className="text-xs text-teal-600 hover:text-teal-800 font-semibold underline">
-                🌳 룰 결정트리
-              </button>
               <button onClick={() => setShowHistory(true)} className="text-xs text-gray-400 hover:text-blue-600 underline">
                 최근 분석 / 즐겨찾기
               </button>
@@ -560,16 +556,10 @@ export default function App() {
       {showAdmin && <AdminPage onClose={() => setShowAdmin(false)} />}
       {showAsk && <AskPage onClose={() => setShowAsk(false)} />}
       {showGlossary && <GlossaryPage onClose={() => setShowGlossary(false)} />}
-      {showRuleTree && (
-        <Suspense fallback={<div className="fixed inset-0 z-50 bg-white flex items-center justify-center text-gray-400">트리 로딩…</div>}>
-          <RuleTreePage onClose={() => setShowRuleTree(false)} />
-        </Suspense>
-      )}
       {showHome && <HomeDashboard
         onDecision={() => { setShowHome(false); window.location.hash = '#decide' }}
         onAsk={() => { setShowAsk(true) }}
-        onGlossary={() => { setShowGlossary(true) }}
-        onRuleTree={() => { setShowRuleTree(true) }} />}
+        onGlossary={() => { setShowGlossary(true) }} />}
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
 
       <button

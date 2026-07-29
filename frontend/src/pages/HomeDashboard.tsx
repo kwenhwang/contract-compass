@@ -1,8 +1,8 @@
 // 홈/대시보드 — 계약나침반 진입 화면 (dashboard.css 클래스 사용).
-// 진입: /#home (또는 해시 없음). 카드 → 계약방법 결정 위저드 / 계약 Q&A / 용어사전 / 룰 결정트리.
+// 진입: /#home (또는 해시 없음). 카드 → 계약방법 결정 위저드 / 계약 Q&A / 용어사전.
 
-export default function HomeDashboard({ onDecision, onAsk, onGlossary, onRuleTree }: {
-  onDecision: () => void; onAsk: () => void; onGlossary: () => void; onRuleTree: () => void
+export default function HomeDashboard({ onDecision, onAsk, onGlossary }: {
+  onDecision: () => void; onAsk: () => void; onGlossary: () => void
 }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, overflow: 'auto' }}>
@@ -79,19 +79,6 @@ export default function HomeDashboard({ onDecision, onAsk, onGlossary, onRuleTre
               </div>
             </div>
 
-            {/* 룰 결정트리 */}
-            <div className="entry">
-              <div className="ehead">
-                <span className="eico" style={{ background: 'var(--safe-tint)', color: 'var(--safe-ink)' }}>
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v6M12 9l-6 5M12 9l6 5" /><circle cx="12" cy="5" r="2" /><circle cx="6" cy="17" r="2" /><circle cx="18" cy="17" r="2" /></svg>
-                </span>
-                <div><h3>룰 결정트리</h3><div className="ewho">추천 로직 투명 공개</div></div>
-              </div>
-              <p>계약방법을 결정하는 룰엔진 전체를 의사결정트리로 공개합니다. 어떤 입력이 어떤 방법으로 이어지는지 직접 검증하세요.</p>
-              <div className="ecta">
-                <button className="btn btn-ghost" onClick={onRuleTree}>결정트리 열기 →</button>
-              </div>
-            </div>
           </div>
 
           <p style={{ marginTop: 18, fontSize: 12, color: 'var(--ink-3)' }}>

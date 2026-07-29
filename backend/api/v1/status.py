@@ -5,9 +5,10 @@ from pathlib import Path
 from typing import Literal
 
 import chromadb
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from backend.api.deps import require_admin
 from backend.config import BASE_DIR, get_settings
 
 router = APIRouter(prefix="/status", tags=["status"])
@@ -528,12 +529,13 @@ def _cached_tree(contract_type: str, org_type: str) -> dict:
     return build_tree(get_rule_engine(), contract_type, org_type)
 
 
-@_rules_router.get("/tree")
+@_rules_router.get("/tree", dependencies=[Depends(require_admin)])
 async def rules_tree(contract_type: str, org_type: str = "public_corp"):
     """계약방법 룰엔진을 도메인 전문가 검증용 '동치 의사결정트리'로 반환.
 
     학습 DT가 아니라 RuleEngine.match(조건필터→priority)와 1:1 동치인 트리(자동 도출).
     coverage.reproduced == coverage.cells 이면 모델 입력공간 전수에서 엔진과 일치함을 의미.
+    2026-07-29 비공개 전환: 룰셋 전체가 노출되는 표면이라 admin 전용.
     """
     if contract_type not in _TREE_CONTRACT_TYPES:
         raise HTTPException(400, f"contract_type은 {sorted(_TREE_CONTRACT_TYPES)} 중 하나")
