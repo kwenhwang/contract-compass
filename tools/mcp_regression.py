@@ -94,6 +94,13 @@ CASES = [
      {"query": "계약을 체결 또는 이행하지 않은 자 부정당업자 제재기간", "top_k": 10},  # 청크 회귀
      lambda d: any("별표" in h.get("section", "") and "계약을 체결" in h.get("excerpt", "")
                    for h in d.get("hits", []))),
+    ("R12-공사-지방판정-국가룰혼입",  # R8의 공사판 — CST general·PRO·FIRE 12개 룰
+     "decide_contract_method",     # national/public_corp 게이트(LOCAL 쌍둥이 완전 커버
+     {"contract_type": "construction", "estimated_price": 350000000,  # 검증 후) 회귀
+      "org_type": "local", "construction_specialty": "general", "project_name": "회귀검사"},
+     lambda d: (lambda rids: any(r.startswith("LOCAL_CST") for r in rids)
+                and not any(r.startswith("CST_") for r in rids))(
+                    [(c.get("rule_id") or "") for c in d.get("candidates", [])])),
 ]
 
 

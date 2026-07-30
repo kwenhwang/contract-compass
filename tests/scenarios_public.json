@@ -398,8 +398,7 @@
       "expect_rule_id": "LOCAL_CST_NEGO_PRO",
       "expect_method": "소액수의계약",
       "expect_top3": [
-        "LOCAL_CST_NEGO_PRO",
-        "CST_PRO_003"
+        "LOCAL_CST_NEGO_PRO"
       ]
     },
     {
@@ -515,8 +514,7 @@
       "expect_rule_id": "LOCAL_CST_NEGO_GEN",
       "expect_method": "소액수의계약",
       "expect_top3": [
-        "LOCAL_CST_NEGO_GEN",
-        "CST_005"
+        "LOCAL_CST_NEGO_GEN"
       ]
     },
     {
@@ -530,9 +528,7 @@
       "expect_rule_id": "LOCAL_CST_NEGO_GEN",
       "expect_method": "소액수의계약",
       "expect_top3": [
-        "LOCAL_CST_NEGO_GEN",
-        "CST_003",
-        "CST_005"
+        "LOCAL_CST_NEGO_GEN"
       ]
     },
     {

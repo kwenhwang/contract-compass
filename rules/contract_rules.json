@@ -1817,7 +1817,11 @@
       "notes": "100억 이상: 종합심사낙찰제 (적격심사 미적용). 50억~100억: 적격심사 별표, 95점/87.495%. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
       "source": {
         "document": "적격심사기준(기획재정부 계약예규)·발주기관별 적격심사 세부기준"
-      }
+      },
+      "org_type": [
+        "national",
+        "public_corp"
+      ]
     },
     {
       "rule_id": "CST_002",
@@ -1852,7 +1856,11 @@
       "notes": "10억 이상~50억 미만 공사. 95점/88.745%. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
       "source": {
         "document": "적격심사기준(기획재정부 계약예규)·발주기관별 적격심사 세부기준"
-      }
+      },
+      "org_type": [
+        "national",
+        "public_corp"
+      ]
     },
     {
       "rule_id": "CST_003",
@@ -1892,7 +1900,11 @@
       "notes": "3억 이상~10억 미만 공사. 95점/89.745%. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
       "source": {
         "document": "적격심사기준(기획재정부 계약예규)·발주기관별 적격심사 세부기준"
-      }
+      },
+      "org_type": [
+        "national",
+        "public_corp"
+      ]
     },
     {
       "rule_id": "CST_004",
@@ -1932,7 +1944,11 @@
       "notes": "종합공사 4억 이상~10억 미만 일반경쟁(적격심사 별표6). 95점/89.745%. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
       "source": {
         "document": "적격심사기준(기획재정부 계약예규)·발주기관별 적격심사 세부기준"
-      }
+      },
+      "org_type": [
+        "national",
+        "public_corp"
+      ]
     },
     {
       "rule_id": "CST_005",
@@ -1972,7 +1988,11 @@
         "document": "국가계약법 시행령",
         "page": null,
         "paragraph": "제26조 제1항 제5호"
-      }
+      },
+      "org_type": [
+        "national",
+        "public_corp"
+      ]
     },
     {
       "rule_id": "CST_006",
@@ -2109,7 +2129,11 @@
       "notes": "종합공사 4억 이상~100억 미만 일반경쟁(적격심사). 95점/89.745%. 지역제한 조건 해당 시 지역제한 룰(CST_006*)이 우선. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
       "source": {
         "document": "적격심사기준(기획재정부 계약예규)·발주기관별 적격심사 세부기준"
-      }
+      },
+      "org_type": [
+        "national",
+        "public_corp"
+      ]
     },
     {
       "rule_id": "CST_ELEC_001",
@@ -2450,7 +2474,11 @@
         "document": "건설산업기본법·공사 적격심사 세부기준",
         "page": null,
         "paragraph": "제9조, 제16조"
-      }
+      },
+      "org_type": [
+        "national",
+        "public_corp"
+      ]
     },
     {
       "rule_id": "CST_PRO_002",
@@ -2485,7 +2513,11 @@
         "document": "건설산업기본법",
         "page": null,
         "paragraph": "제9조"
-      }
+      },
+      "org_type": [
+        "national",
+        "public_corp"
+      ]
     },
     {
       "rule_id": "CST_PRO_003",
@@ -2519,7 +2551,11 @@
         "document": "국가계약법 시행령",
         "page": null,
         "paragraph": "제26조 제1항 제5호 가목"
-      }
+      },
+      "org_type": [
+        "national",
+        "public_corp"
+      ]
     },
     {
       "rule_id": "CST_FIRE_001",
@@ -2588,7 +2624,11 @@
         "document": "소방시설공사업법",
         "page": null,
         "paragraph": "제4조, 제16조"
-      }
+      },
+      "org_type": [
+        "national",
+        "public_corp"
+      ]
     },
     {
       "rule_id": "CST_FIRE_002",
@@ -2625,7 +2665,11 @@
         "document": "소방시설공사업법",
         "page": null,
         "paragraph": "제4조, 제16조"
-      }
+      },
+      "org_type": [
+        "national",
+        "public_corp"
+      ]
     },
     {
       "rule_id": "CST_FIRE_003",
@@ -2660,7 +2704,11 @@
         "document": "소방시설공사업법",
         "page": null,
         "paragraph": "제4조"
-      }
+      },
+      "org_type": [
+        "national",
+        "public_corp"
+      ]
     },
     {
       "rule_id": "CST_HERITAGE_001",
