@@ -84,6 +84,9 @@ class QuotaGate:
 
 # 전 도구 읽기전용 — 어노테이션이 없으면 codex(비대화)가 승인 대상으로 보고 자동 취소한다(2026-07-29 실측)
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
+# report_issue 전용 — 유일한 쓰기 도구. 정직하게 non-readonly로 달아 대화형 클라이언트가
+# 사용자 승인을 받게 한다(비대화 codex는 자동 취소될 수 있음 — 제보는 선택 기능이라 허용).
+WRITE_FEEDBACK = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False)
 
 server = MCPServer(
     name="contract-compass",
@@ -100,7 +103,8 @@ server = MCPServer(
         "2~3개 병렬 호출은 무방하나 다발(4개 이상 동시) 호출은 피하라"
         "(단일 워커 백엔드라 대기 누적으로 타임아웃). "
         "도구가 {'error': ...}를 반환하면 그 hint를 따르고, 도구 근거 없이 "
-        "자체 지식으로 법령 수치를 단정하지 마라. "
+        "자체 지식으로 법령 수치를 단정하지 마라. 도구 결과가 명백히 틀렸거나 "
+        "사용자가 오류를 지적하면 report_issue로 제보하라(사용자에게 알리고). "
         "답변은 정보 제공용이며 법적 자문이 아니다."
     ),
     version="1.1.0",
@@ -328,6 +332,59 @@ def get_law_article(ref: str) -> dict:
     if isinstance(d.get("content"), str) and len(d["content"]) > 6000:
         d["content"] = d["content"][:6000] + "…(생략)"
     return d
+
+
+@server.tool(annotations=WRITE_FEEDBACK)
+def report_issue(
+    category: str,
+    message: str,
+    related_tool: str | None = None,
+    related_query: str | None = None,
+    expected: str | None = None,
+) -> dict:
+    """오류·개선 제보 — 운영자에게 전달된다(웹 피드백과 같은 검토 파이프라인).
+
+    도구 결과가 명백히 틀렸거나(조문·수치·판례 불일치), 사용자가 오류를 지적하거나,
+    필요한 기능이 없을 때 사용하라. 제보 전 사용자에게 보낼 내용을 알리는 것을 권장.
+
+    Args:
+        category: "wrong_citation"(오인용) | "outdated_law"(개정 미반영) |
+            "wrong_ruling"(룰엔진 오판정) | "tool_error"(도구 오류) |
+            "feature_request"(기능 요청) | "other"
+        message: 무엇이 어떻게 잘못됐는지 구체적으로 (근거 조문·기대값 포함 권장)
+        related_tool: 문제가 난 도구명 (예: "search_references")
+        related_query: 문제를 재현하는 질의·입력
+        expected: 올바르다고 생각하는 값·조문 (알고 있다면)
+    """
+    cats = {"wrong_citation", "outdated_law", "wrong_ruling", "tool_error",
+            "feature_request", "other"}
+    if category not in cats:
+        return {"error": "bad_category", "message": f"category는 {sorted(cats)} 중 하나"}
+    if not message or len(message.strip()) < 10:
+        return {"error": "too_short", "message": "message에 문제 상황을 10자 이상 구체적으로 적어라"}
+    comment = f"[MCP:{category}] {message.strip()[:2000]}"
+    if related_tool:
+        comment += f"\n도구: {related_tool[:100]}"
+    if expected:
+        comment += f"\n기대값: {expected[:500]}"
+    import uuid as _uuid
+    body = {
+        "session_id": f"mcp-{_uuid.uuid4().hex[:12]}",
+        "rating": "3" if category == "feature_request" else "1",
+        "comment": comment,
+        "feedback_type": "general",
+        "question": (related_query or "")[:1000],
+        "page": "MCP",
+    }
+    try:
+        with httpx.Client(timeout=_TIMEOUT) as c:
+            r = c.post(f"{API}/feedback", data=body)  # 웹과 동일 엔드포인트(Form)
+            r.raise_for_status()
+    except httpx.HTTPError as exc:
+        return _friendly_error(exc)
+    return {"ok": True,
+            "message": "제보가 접수됐습니다. 운영자가 검토 후 반영하며, 처리 현황은 "
+                       "웹 의견 파이프라인에서 관리됩니다. 감사합니다."}
 
 
 async def _health(request):  # noqa: ANN001 — Starlette Request

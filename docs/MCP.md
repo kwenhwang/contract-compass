@@ -18,7 +18,7 @@
 3. **구조화 실패** — 오류·한도 초과는 예외가 아니라 `{"error", "message", "hint"}` dict로
    반환된다. 에이전트는 hint의 행동지침을 따르면 된다.
 
-## 도구 명세 (6종)
+## 도구 명세 (7종)
 
 ### decide_contract_method — 계약방법 결정론 판정
 룰엔진(94룰, 국가/지방/공기업 3프로파일)이 적용 가능한 계약방법 후보를 법령 근거와 반환.
@@ -46,6 +46,12 @@
 ### search_cases — 판례·법령해석례 검색 (law.go.kr 실시간)
 - 입력: `query`(핵심 명사 위주), `top_k`(종류당 ≤10), `kind`("prec"판례|"expc"해석례|"all")
 - 반환: `{hits: [{kind, case_id, title, org, case_no, date}]}` — 본문은 get_case로
+
+### report_issue — 오류·개선 제보 (유일한 쓰기 도구)
+- 입력: `category`(wrong_citation|outdated_law|wrong_ruling|tool_error|feature_request|other),
+  `message`(10자 이상), 선택: `related_tool`·`related_query`·`expected`
+- 웹 피드백과 같은 검토 파이프라인(feedback.jsonl→관리자 보드)으로 접수.
+  non-readonly 어노테이션 — 대화형 클라이언트는 사용자 승인 후 호출
 
 ### get_case — 판례/해석례 본문
 - 입력: `kind`, `case_id`(search_cases 결과)
