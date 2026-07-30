@@ -83,6 +83,29 @@ export default function HomeDashboard({ onDecision, onAsk, onGlossary }: {
 
           </div>
 
+          {/* MCP 안내 — AI 에이전트 사용자용 발견 경로 (2026-07-30) */}
+          <div className="entry" style={{ marginTop: 14 }}>
+            <div className="ehead">
+              <span className="eico" style={{ background: 'var(--violet-tint)', color: 'var(--violet-ink)' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M12 12v4M9 14h6" /></svg>
+              </span>
+              <div><h3>AI 에이전트용 MCP 서버</h3><div className="ewho">Claude · ChatGPT · Cursor 연결</div></div>
+            </div>
+            <p>
+              쓰시는 AI에 계약나침반을 연결하면 룰엔진 판정·법령 조문·적격심사 세부기준(별표)·
+              판례를 AI가 직접 조회해 답합니다. 서버는 LLM을 쓰지 않아 근거가 검증 가능합니다.
+            </p>
+            <p style={{ fontSize: 13 }}>
+              <code style={{ background: 'var(--bg-2, #f4f4f5)', padding: '2px 6px', borderRadius: 4 }}>
+                https://contract.naru.build/mcp
+              </code>
+              {' '}· 무료 50콜/일 ·{' '}
+              <a href="https://github.com/kwenhwang/contract-compass/blob/master/docs/MCP.md" target="_blank" rel="noreferrer">도구 명세</a>
+              {' '}·{' '}
+              <a href="/mcp/pricing" target="_blank" rel="noreferrer">요금 안내</a>
+            </p>
+          </div>
+
           <p style={{ marginTop: 18, fontSize: 12, color: 'var(--ink-3)' }}>
             AI는 부정확할 수 있습니다. 중요한 결정 시 법령·실무 기준을 반드시 확인하세요.
           </p>

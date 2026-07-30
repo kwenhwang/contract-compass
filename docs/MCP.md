@@ -1,0 +1,87 @@
+# 계약나침반 MCP 서버 명세
+
+> Korean public procurement law MCP server. All tools are **LLM-free** — the server
+> returns deterministic rulings and verifiable legal source text; reasoning and answer
+> composition belong to the client agent.
+
+- 원격(Streamable HTTP): `https://contract.naru.build/mcp` · 헬스: `/mcp/health`
+- 로컬(stdio): `python3 mcp/server.py`
+- 무료: IP당 50콜/일(전 도구) · 유료 키(`cc_live_*`): 한도 상향 — [요금](https://contract.naru.build/mcp/pricing)
+- 인증: `Authorization: Bearer cc_live_...` 헤더 또는 `?key=` 쿼리(ChatGPT 커넥터용)
+
+## 설계 원칙
+
+1. **무LLM** — 서버는 어떤 도구에서도 LLM을 호출하지 않는다. 판정은 룰엔진(결정론),
+   검색은 임베딩+BM25, 판례는 law.go.kr 실시간 프록시. 클라이언트(당신의 AI)가 합성한다.
+2. **근거 우선** — 모든 응답은 조문 원문·별표·판례 번호로 역추적 가능해야 한다.
+   도구가 못 찾은 수치는 클라이언트가 지어내지 말아야 하며, instructions에 명시돼 있다.
+3. **구조화 실패** — 오류·한도 초과는 예외가 아니라 `{"error", "message", "hint"}` dict로
+   반환된다. 에이전트는 hint의 행동지침을 따르면 된다.
+
+## 도구 명세 (6종)
+
+### decide_contract_method — 계약방법 결정론 판정
+룰엔진(94룰, 국가/지방/공기업 3프로파일)이 적용 가능한 계약방법 후보를 법령 근거와 반환.
+- 입력: `contract_type`("construction"|"service"|"product"), `estimated_price`(원),
+  `org_type`("national"|"local"|"public_corp"), 선택: `service_type`,
+  `construction_specialty`, `is_sme_competition_product`, `negotiation_reason`
+- 반환: `candidates[]`(method·rule_id·summary·key_params(적격심사 통과점수·낙찰하한율)·
+  legal_basis), `practice_alternatives`, `explanation`(결정론 자료 팩), `laws_applied`
+- 백엔드 LLM 보조설명은 `skip_llm`으로 생략 — 판정 결과는 동일, 비용 0
+
+### search_law — 법령 조문 검색
+- 입력: `query`(예: "수의계약", "시행령 제26조", 자연어 복합 쿼리 가능), `top_k`(≤20)
+- 다단어는 부분매치 순위(2토큰 이상), 0건이면 시맨틱 폴백. 0건 시 재질의 `hint` 동봉
+- 반환: `{hits: [{law_name, article, content, snippet, law_ref}], count}`
+
+### get_law_article — 조문 원문 전체
+- 입력: `ref`(예: "국가계약법 시행령 제26조", "지방계약법 시행규칙 제24조")
+- 긴 조문은 항 단위 자식 청크를 조립해 전문 복원. 코퍼스에 없으면 구조화 404
+
+### search_references — 전 코퍼스 통합 검색
+법령+계약예규+조달청·행안부 적격심사 세부기준(별표 포함)+감사원 실무가이드.
+낙찰하한율·적격심사 배점·부정당 제재기준처럼 **법령 본문 밖** 질의에 사용.
+- 입력: `query`, `top_k`(≤12) · 반환: `{hits: [{source, section, source_type, excerpt, relevance}]}`
+
+### search_cases — 판례·법령해석례 검색 (law.go.kr 실시간)
+- 입력: `query`(핵심 명사 위주), `top_k`(종류당 ≤10), `kind`("prec"판례|"expc"해석례|"all")
+- 반환: `{hits: [{kind, case_id, title, org, case_no, date}]}` — 본문은 get_case로
+
+### get_case — 판례/해석례 본문
+- 입력: `kind`, `case_id`(search_cases 결과)
+- 반환(판례): 판시사항·판결요지·참조조문 / (해석례): 질의요지·회답·이유
+- 판례가 인용한 참조조문은 get_law_article로 교차확인 권장
+
+## 권장 사용 흐름
+
+- 계약방법 질문 → `decide_contract_method` → 근거 조문 `get_law_article` 검증
+- 수치·기준 질문(하한율·보증금·제재기간) → `search_references`(별표) + `search_law`
+- 분쟁·처분·"~해도 되나" → `search_cases` → `get_case` → 참조조문 교차확인
+- 병렬 호출은 2~3개까지, 4개 이상 동시 다발 금지(단일 워커 오리진)
+
+## 아키텍처
+
+```
+AI 클라이언트 (Claude/ChatGPT/Cursor/Codex — 합성·판단 담당)
+  → CF 엣지 (contract-edge 워커: 장애 폴백 · law API 캐시 · 판례 엣지 파싱)
+    → naru nginx (/lawproxy → law.go.kr 직결 | /mcp → :8403 | 그 외 → :8402)
+      → MCP 서버(:8403) → 백엔드(:8402): 룰엔진 · ChromaDB 코퍼스(법령 5,820조문 +
+        예규·별표 1,100+청크 + 실무가이드) · BM25 하이브리드
+  [naru 장애] → 엣지 폴백 안내 → quant 콜드 스탠바이 수동 전환(docs/RUNBOOK-failover.md)
+```
+
+## 한도·요금
+
+| 티어 | 한도 | 비고 |
+|---|---|---|
+| 무료 | IP당 50콜/일 (UTC 리셋) | 전 도구 동일 기능 |
+| 유료 키 | 키당 2,000콜/일 | 수동 발급, 자동결제 없음 — pricing 페이지 참조 |
+
+한도 초과 응답은 구조화 dict로 반환되며 결제·발급 안내 URL을 포함한다.
+
+## 출처·면책
+
+- 법령·별표·판례·해석례: 국가법령정보센터(law.go.kr) 국가법령정보 공동활용 Open API —
+  본 서비스는 출처를 표시하며, 원문의 저작권 정책은 법제처 고지를 따른다.
+- 본 서비스의 모든 응답은 정보 제공 목적이며 **법적 자문·유권해석이 아니다**. 실제
+  발주·입찰·소송 전 반드시 소속 기관 계약부서·법률 전문가와 현행 법령을 확인할 것.
