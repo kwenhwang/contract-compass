@@ -141,6 +141,21 @@ CASES = [
      lambda d: any((c.get("key_params") or {}).get("pass_score")
                    and (c.get("key_params") or {}).get("lower_limit_rate")
                    for c in d.get("candidates", []))),
+    ("R18-검색순위-근거표시",      # rerank 무산출을 조용히 넘기면 에이전트가 1위 청크를
+     "search_references",        # 정답으로 단정한다 — ranking/ranked_by로 근거를 밝히고
+     {"query": "적격심사 낙찰하한율", "top_k": 6},   # 미가동이면 hint까지 나와야 한다
+     lambda d: d.get("ranking") in ("rerank", "hybrid_rrf")
+               and all(h.get("ranked_by") in ("rerank", "hybrid_rrf") for h in d.get("hits", []))
+               and (d.get("ranking") != "hybrid_rrf" or "hint" in d)),
+    ("R19-별표2-상위회수",        # rerank 미배선 시절 별표2가 relevance 0.6 하드코딩에
+     "search_references",        # 묻혀 6위였다(2026-07-30 실측). rerank가 죽으면 검색
+     {"query": "부정당업자 제재 계약 미체결 제재기간", "top_k": 6},   # 품질이 실제로
+     lambda d: any("부정당업자 제한기준" in (h.get("section") or "")   # 나빠지므로 실패가
+                   for h in d.get("hits", [])[:2])),                  # 맞다(은폐 금지)
+    ("R20-분할발주-실무어",       # 법령 용어는 '분할계약'이라 실무어 '분할발주'로는
+     "search_law",               # 조문이 안 잡히고 동음이의 '지적(地籍) 정리'가 상위로
+     {"query": "분할발주 금지", "top_k": 5},          # 나왔다 — glossary aliases 회귀
+     lambda d: any("제68조" in (h.get("law_ref") or "") for h in d.get("hits", []))),
 ]
 
 
