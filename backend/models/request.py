@@ -36,6 +36,9 @@ class Step1Request(BaseModel):
     is_women_enterprise: bool = False      # 여성기업지원법 제2조제1호
     is_disabled_enterprise: bool = False   # 장애인기업활동법 제2조제2호
     is_social_enterprise: bool = False     # 사회적기업 육성법 제2조제1호 등
+    # 청년창업기업 — 같은 조 제5호 다목(2천만원 초과 5천만원 이하). 다목이 신설되며
+    # 이후 목이 밀렸는데 정작 다목을 다루는 룰이 없었다(2026-07-31 신설).
+    is_youth_startup: bool = False         # 중소기업창업 지원법 제2조제11호
 
     # 공사 전문분야 (미입력 시 일반건설공사로 처리)
     # F20-C1 (2026-06-10): 건설산업기본법 시행령 별표1 전문공사 14개 + 기존 6개 = 20개 enum

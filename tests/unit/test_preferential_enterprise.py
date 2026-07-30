@@ -87,7 +87,37 @@ def test_national_org_unaffected(engine):
     assert "LOCAL_SVC_NEGO_SOCIAL" not in ids
 
 
+@pytest.mark.parametrize("ct,rule_id", [
+    ("service", "LOCAL_SVC_NEGO_YOUTH"),
+    ("product", "LOCAL_PRD_NEGO_YOUTH"),
+])
+def test_youth_startup_rule(engine, ct, rule_id):
+    """다목(청년창업기업 2천만 초과 5천만 이하) — 목만 밀리고 정작 룰이 없었다."""
+    params = {"contract_type": ct, "estimated_price": 40_000_000, "is_youth_startup": True}
+    ids = [h["rule_id"] for h in engine.match(params, org_type="local")]
+    assert rule_id in ids
+
+
+@pytest.mark.parametrize("price,expected", [
+    (20_000_000, False),   # '초과'라 경계 미달
+    (20_000_001, True),
+    (50_000_000, True),    # '5천만원 이하' 경계 포함
+    (50_000_001, False),   # 이 위는 다목이 아니다 — 라목(소기업)·바목(우대기업) 영역
+])
+def test_youth_startup_price_band(engine, price, expected):
+    params = {"contract_type": "service", "estimated_price": price, "is_youth_startup": True}
+    ids = [h["rule_id"] for h in engine.match(params, org_type="local")]
+    assert ("LOCAL_SVC_NEGO_YOUTH" in ids) is expected, f"{price:,}원: {ids}"
+
+
+def test_youth_startup_requires_flag(engine):
+    params = {"contract_type": "service", "estimated_price": 40_000_000}
+    ids = [h["rule_id"] for h in engine.match(params, org_type="local")]
+    assert "LOCAL_SVC_NEGO_YOUTH" not in ids
+
+
 @pytest.mark.parametrize("rule_id,expected_mok", [
+    ("LOCAL_SVC_NEGO_YOUTH", "제25조제1항제5호다목"),      # 청년창업기업
     ("LOCAL_SVC_NEGO_SMALLBIZ", "제25조제1항제5호라목"),   # 소기업·소상공인
     ("LOCAL_PRD_NEGO_SMALLBIZ", "제25조제1항제5호라목"),
     ("LOCAL_SVC_NEGO_ACADEMIC", "제25조제1항제5호마목"),   # 학술연구·원가계산

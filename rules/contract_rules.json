@@ -3463,6 +3463,42 @@
       ]
     },
     {
+      "rule_id": "LOCAL_SVC_NEGO_YOUTH",
+      "org_type": "local",
+      "contract_type": "service",
+      "name": "용역 수의 청년창업기업(지자체 2천만~5천만)",
+      "priority": 34,
+      "conditions": {
+        "is_youth_startup": true,
+        "estimated_price_gt": 20000000,
+        "estimated_price_lte": 50000000
+      },
+      "result": {
+        "method": "수의계약"
+      },
+      "legal_basis": [
+        "지방계약법 시행령 제25조제1항제5호다목"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_PRD_NEGO_YOUTH",
+      "org_type": "local",
+      "contract_type": "product",
+      "name": "물품 수의 청년창업기업(지자체 2천만~5천만)",
+      "priority": 34,
+      "conditions": {
+        "is_youth_startup": true,
+        "estimated_price_gt": 20000000,
+        "estimated_price_lte": 50000000
+      },
+      "result": {
+        "method": "수의계약"
+      },
+      "legal_basis": [
+        "지방계약법 시행령 제25조제1항제5호다목"
+      ]
+    },
+    {
       "rule_id": "LOCAL_SVC_NEGO_ACADEMIC",
       "org_type": "local",
       "contract_type": "service",

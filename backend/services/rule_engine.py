@@ -85,6 +85,13 @@ class RuleEngine:
             elif key == "small_enterprise_restriction":
                 if params.get("small_enterprise_restriction", False) != val:
                     return False
+            elif key == "is_youth_startup":
+                # 지방계약법 시행령 제25조제1항제5호다목 — 「중소기업창업 지원법」
+                # 제2조제11호 청년창업기업, 2천만원 초과 5천만원 이하 물품·용역.
+                # 이 목이 신설되며 이후 목(라·마·바)이 밀렸는데 정작 다목 자체를
+                # 다루는 룰이 없어 청년창업기업 수의계약이 후보에 오르지 않았다.
+                if params.get("is_youth_startup", False) != val:
+                    return False
             elif key == "is_simple_labor":
                 if params.get("is_simple_labor", False) != val:
                     return False

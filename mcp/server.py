@@ -192,6 +192,7 @@ def decide_contract_method(
     is_women_enterprise: bool = False,
     is_disabled_enterprise: bool = False,
     is_social_enterprise: bool = False,
+    is_youth_startup: bool = False,
     project_name: str = "MCP 조회",
 ) -> dict:
     """계약방법 결정론 판정 — 룰엔진이 적용 가능한 계약방법 후보와 법령 근거를 반환.
@@ -212,6 +213,8 @@ def decide_contract_method(
         is_disabled_enterprise: 장애인기업 여부 (위와 같은 목)
         is_social_enterprise: 사회적기업·사회적협동조합·자활기업·마을기업 여부 (위와 같은 목).
             이 유형은 행정안전부 고시 취약계층 고용비율 충족이 추가 요건이다.
+        is_youth_startup: 청년창업기업 여부 — 지자체 물품·용역 2천만원 초과 5천만원
+            이하 수의계약(같은 조 제5호 다목, 중소기업창업 지원법 제2조제11호)
     """
     body: dict[str, Any] = {
         "contract_type": contract_type,
@@ -221,6 +224,7 @@ def decide_contract_method(
         "is_women_enterprise": is_women_enterprise,
         "is_disabled_enterprise": is_disabled_enterprise,
         "is_social_enterprise": is_social_enterprise,
+        "is_youth_startup": is_youth_startup,
         "project_name": project_name,
         # 에이전트 클라이언트는 자체 LLM으로 설명을 합성 — 백엔드 LLM 보조설명 생략
         # (판정 결과·법령 근거는 동일, OpenAI 일일 예산 0 소모. 2026-07-30)
