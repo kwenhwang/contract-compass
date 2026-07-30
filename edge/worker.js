@@ -7,11 +7,14 @@
  * ② GET /api/v1/law/*는 caches.default 엣지 캐시(오리진 Cache-Control 존중) —
  *    워커가 CF 캐시 룰보다 앞단이라 워커 안에서 캐시를 유지해야 P2 효과가 보존된다.
  *
- * ※ 판례 API를 엣지에서 직접 law.go.kr 호출하는 안(2026-07-30 시도)은 **불가 판명**:
- *   법제처 Open API가 OC 키에 등록된 서버 IP만 허용(응답: "정확한 서버장비의 IP...")
- *   — CF 워커 이그레스는 유동 IP라 등록 불가. 판례는 오리진(naru, IP 등록됨) 경유
- *   + 엣지 캐시로 유지한다. 관련 핸들러는 제거(git 히스토리 603425be 참조).
+ * ③ 판례·해석례(/api/v1/law/cases·case)는 엣지에서 파싱하되 **naru를 이그레스로**
+ *   경유한다: 법제처 Open API가 OC 키 등록 서버 IP만 허용해 워커(유동 IP)가 직접
+ *   못 부르므로, nginx `location /lawproxy/`(시크릿 헤더 게이트)가 law.go.kr로
+ *   직결 중계한다. 파이썬 앱 미경유 — 오리진 부담은 nginx 바이트 중계뿐이고
+ *   uvicorn이 죽은 부분 장애에서도 판례는 동작한다. 한계: naru(nginx) 전체 다운이면
+ *   판례도 다운(그땐 폴백 게이트가 안내). lawproxy 실패 시 오리진 백엔드 경로로 폴백.
  * 배포: edge/wrangler.toml + `wrangler deploy`
+ *      (secrets: LAW_API_KEY=법제처 OC, EDGE_PROXY_KEY=data/.edge_proxy_key)
  */
 
 const STATUS_PAGE = "https://status.naru.build";
@@ -19,6 +22,12 @@ const STATUS_PAGE = "https://status.naru.build";
 export default {
   async fetch(request, env, ctx) {
     const p = new URL(request.url).pathname;
+    if (request.method === "GET" && p === "/api/v1/law/cases") {
+      return edgeCached(request, ctx, 3600, () => handleCases(new URL(request.url), env, request));
+    }
+    if (request.method === "GET" && p === "/api/v1/law/case") {
+      return edgeCached(request, ctx, 86400, () => handleCase(new URL(request.url), env, request));
+    }
     if (request.method === "GET" && p.startsWith("/api/v1/law/")) {
       // P2 캐시 보존 — 오리진 Cache-Control(200만 부여)을 존중해 워커 캐시에 저장
       return edgeCached(request, ctx, null, () => passthrough(request));
@@ -97,6 +106,81 @@ function fallback(request, code) {
     status: 503,
     headers: { "content-type": "text/html; charset=utf-8", "Retry-After": "120", "x-edge-fallback": "1" },
   });
+}
+
+// ── ③ 판례·해석례: 엣지 파싱 + naru 이그레스(lawproxy) ─────────────────────
+function cdata(tag, block) {
+  const m = block.match(new RegExp(`<${tag}>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?</${tag}>`));
+  return m ? m[1].trim().replaceAll("<br/>", " ") : "";
+}
+
+async function drf(env, path, params) {
+  if (!env.LAW_API_KEY || !env.EDGE_PROXY_KEY) return { err: "secrets 미설정" };
+  const qs = new URLSearchParams({ OC: env.LAW_API_KEY, type: "XML", ...params });
+  try {
+    const r = await fetch(`https://contract.naru.build/lawproxy/${path}?${qs}`, {
+      headers: { "x-edge-proxy-key": env.EDGE_PROXY_KEY },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!r.ok) return { err: `lawproxy HTTP ${r.status}` };
+    const xml = await r.text();
+    if (!xml.includes("<")) return { err: "law.go.kr 응답 형식 이상" };
+    return { xml };
+  } catch {
+    return { err: "lawproxy 연결 실패" };
+  }
+}
+
+async function handleCases(url, env, request) {
+  const q = (url.searchParams.get("q") || "").trim();
+  const kind = url.searchParams.get("kind") || "all";
+  const topK = Math.max(1, Math.min(parseInt(url.searchParams.get("top_k") || "5", 10) || 5, 10));
+  if (q.length < 2 || q.length > 100) return json({ detail: "q는 2~100자" }, 422);
+  if (!["prec", "expc", "all"].includes(kind)) return json({ detail: "kind는 prec|expc|all" }, 422);
+  const kinds = kind === "all" ? ["prec", "expc"] : [kind];
+  const out = [];
+  for (const k of kinds) {
+    const { xml, err } = await drf(env, "lawSearch.do", { target: k, display: String(topK), query: q });
+    if (err) return passthrough(stripTestHeader(request)); // 이그레스 실패 → 오리진 백엔드 경로 폴백
+    if (!xml.includes("totalCnt")) return passthrough(stripTestHeader(request)); // 차단·형식 이상도 폴백
+    for (const block of xml.match(new RegExp(`<${k} id=[\\s\\S]*?</${k}>`, "g")) || []) {
+      out.push(
+        k === "prec"
+          ? { kind: "prec", case_id: cdata("판례일련번호", block), title: cdata("사건명", block),
+              org: cdata("법원명", block), case_no: cdata("사건번호", block), date: cdata("선고일자", block) }
+          : { kind: "expc", case_id: cdata("법령해석례일련번호", block), title: cdata("안건명", block),
+              org: cdata("회신기관명", block) || cdata("해석기관명", block), case_no: cdata("안건번호", block),
+              date: cdata("회신일자", block) || cdata("해석일자", block) },
+      );
+    }
+  }
+  return json(out, 200, { "x-edge": "cases" });
+}
+
+async function handleCase(url, env, request) {
+  const kind = url.searchParams.get("kind") || "";
+  const id = url.searchParams.get("case_id") || "";
+  if (!["prec", "expc"].includes(kind)) return json({ detail: "kind는 prec|expc" }, 422);
+  if (!/^\w{1,20}$/.test(id)) return json({ detail: "case_id 형식 오류" }, 422);
+  const { xml, err } = await drf(env, "lawService.do", { target: kind, ID: id });
+  if (err) return passthrough(stripTestHeader(request));
+  const f = (tag, limit = 2500) => {
+    const v = cdata(tag, xml);
+    return v.length > limit ? v.slice(0, limit) + "…(생략)" : v;
+  };
+  const body =
+    kind === "prec"
+      ? { kind, case_id: id, title: f("사건명"), org: f("법원명"), case_no: f("사건번호"), date: f("선고일자"),
+          issue: f("판시사항"), summary: f("판결요지"), referenced_laws: f("참조조문", 800) }
+      : { kind, case_id: id, title: f("안건명"), org: f("해석기관명"), case_no: f("안건번호"), date: f("해석일자"),
+          question: f("질의요지"), answer: f("회답"), reasoning: f("이유", 4000) };
+  return json(body, 200, { "x-edge": "case" });
+}
+
+function stripTestHeader(request) {
+  const h = new Headers(request.headers);
+  h.delete("x-edge-fallback-test");
+  return new Request(request, { headers: h });
 }
 
 function json(obj, status = 200, headers = {}) {

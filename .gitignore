@@ -6,6 +6,7 @@ data/sessions.db
 data/openai_daily_cap.json
 data/openai_daily_cap_internal.json
 data/rate_limiter.db*
+data/.edge_proxy_key
 data/feedback_shots/
 data/source_docs/
 tools/laws/*.xml
