@@ -28,6 +28,15 @@ class Step1Request(BaseModel):
         "specific_person", "small_repeat", "other_justified"
     ] | None = None
     prior_bid_count: int = 0  # 재공고 유찰 시 직전 공고 횟수
+    # 우대기업 — 지방계약법 시행령 제25조제1항제5호바목(2천만원 초과 1억원 이하
+    # 물품·용역 수의계약). 셋을 한 목으로 묶어 규정하므로 룰은 is_preferential_enterprise
+    # 조건으로 OR 매칭한다. 2단계(additional_conditions)에만 있어 MCP 단발 판정
+    # 경로로는 표현할 수 없었고, 그래서 "여성기업"이라고 말해도 수의계약 후보가
+    # 통째로 누락됐다(2026-07-30 제보 → 07-31 수리).
+    is_women_enterprise: bool = False      # 여성기업지원법 제2조제1호
+    is_disabled_enterprise: bool = False   # 장애인기업활동법 제2조제2호
+    is_social_enterprise: bool = False     # 사회적기업 육성법 제2조제1호 등
+
     # 공사 전문분야 (미입력 시 일반건설공사로 처리)
     # F20-C1 (2026-06-10): 건설산업기본법 시행령 별표1 전문공사 14개 + 기존 6개 = 20개 enum
     # group: 종합(general) / 법령공사(electrical·ict·fire_safety·cultural_heritage·other)

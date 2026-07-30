@@ -34,8 +34,11 @@ def _circled_to_int(ch: str) -> int | None:
 
 
 _HANG_MARKER_RE = re.compile(r"([①-⑳])")
-# 호 표지: 줄머리의 "1." "12." — 금액·날짜("2023.4.11")를 삼키지 않도록 줄머리로 한정
-_HO_LINE_RE = re.compile(r"^\s*(\d{1,2})\.\s", re.MULTILINE)
+# 호 표지 "1." "12." — 실제 조회 응답은 호를 **항과 같은 줄에 이어서** 담는다
+# ("…아니 된다. <개정 2023.4.11> 1. 교부 목적 외 용도로의 사용 2. 양도…").
+# 줄머리로 한정했다가 실제 데이터에서 통째로 침묵한 이력이 있다(2026-07-31).
+# 날짜("2023.4.11")·소수를 삼키지 않도록 앞이 숫자·점이면 제외하고, 뒤에 공백을 요구한다.
+_HO_MARKER_RE = re.compile(r"(?<![\d.])\b(\d{1,2})\.\s")
 # "제N항 각 호" (공백 변형 허용)
 _XREF_RE = re.compile(r"제\s*(\d{1,2})\s*항\s*각\s*호")
 # 인용 바로 앞이 다른 조 참조이면 외부 인용 — 같은 조 안의 정합성 판단 대상이 아니다
@@ -60,7 +63,11 @@ def _hang_blocks(content: str) -> dict[int, str]:
 
 
 def _has_ho(block: str) -> bool:
-    return bool(_HO_LINE_RE.search(block))
+    """각 호가 실재하는가 — '1.'로 시작하는 열거만 인정한다.
+
+    번호가 1부터 시작할 것을 요구해 잔여 오탐(단독 '3.' 같은 파편)을 걸러낸다.
+    """
+    return 1 in {int(m.group(1)) for m in _HO_MARKER_RE.finditer(block)}
 
 
 def detect_crossref_anomalies(content: str) -> list[dict]:

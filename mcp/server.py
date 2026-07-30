@@ -189,6 +189,9 @@ def decide_contract_method(
     construction_specialty: str | None = None,
     is_sme_competition_product: bool = False,
     negotiation_reason: str | None = None,
+    is_women_enterprise: bool = False,
+    is_disabled_enterprise: bool = False,
+    is_social_enterprise: bool = False,
     project_name: str = "MCP 조회",
 ) -> dict:
     """계약방법 결정론 판정 — 룰엔진이 적용 가능한 계약방법 후보와 법령 근거를 반환.
@@ -202,12 +205,22 @@ def decide_contract_method(
         is_sme_competition_product: 중소기업자간 경쟁제품 여부
         negotiation_reason: 수의 사유 "urgent"|"rebid_failure"|"technical_difficulty"|
             "patent_new_tech"|"specific_person"|"small_repeat"|"other_justified"
+        is_women_enterprise: 여성기업 여부 — 지자체 물품·용역 2천만원 초과 1억원 이하
+            수의계약(시행령 제25조제1항제5호바목) 판정에 필요. 사용자가 "여성기업",
+            "장애인기업", "사회적기업"이라고 말하면 **반드시 해당 플래그를 세워라** —
+            빠뜨리면 수의계약 후보가 통째로 빠지고 경쟁입찰만 제시된다.
+        is_disabled_enterprise: 장애인기업 여부 (위와 같은 목)
+        is_social_enterprise: 사회적기업·사회적협동조합·자활기업·마을기업 여부 (위와 같은 목).
+            이 유형은 행정안전부 고시 취약계층 고용비율 충족이 추가 요건이다.
     """
     body: dict[str, Any] = {
         "contract_type": contract_type,
         "estimated_price": estimated_price,
         "org_type": org_type,
         "is_sme_competition_product": is_sme_competition_product,
+        "is_women_enterprise": is_women_enterprise,
+        "is_disabled_enterprise": is_disabled_enterprise,
+        "is_social_enterprise": is_social_enterprise,
         "project_name": project_name,
         # 에이전트 클라이언트는 자체 LLM으로 설명을 합성 — 백엔드 LLM 보조설명 생략
         # (판정 결과·법령 근거는 동일, OpenAI 일일 예산 0 소모. 2026-07-30)
