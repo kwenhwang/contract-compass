@@ -27,7 +27,12 @@ OC = os.environ.get("LAW_API_KEY", "test")
 OUT_DIR = Path(__file__).parent / "law_tables"
 OUT_DIR.mkdir(exist_ok=True)
 RULES_DIR = Path(__file__).parent / "admin_rules"
-CHUNK_MAX = 1200
+# 700자 창 + 200자 중첩(2026-07-30): rag_service의 모든 검색 경로가 content를
+# 800자로 절단한다 — 1,200자 청크는 꼬리 400자가 회수돼도 안 보였다(배터리
+# 업체-062). 800 미만 창이면 절단 자체가 불가능하고, 중첩이 행 단위 정보의
+# 경계 분단을 흡수한다.
+CHUNK_MAX = 700
+CHUNK_STEP = 500
 
 # ── 1) 법령 별표 (licbyl 검색: 쿼리 → 관련법령명·별표명으로 정확 선별) ─────────
 LICBYL_TARGETS = [
@@ -82,17 +87,41 @@ def _admrul_fulltext_pdf_url(xml_path: Path) -> str | None:
 
 
 def _pdf_text(path: Path) -> str:
+    """PDF 텍스트 추출 — 글리프 좌표로 어절 공백 복원.
+
+    법제처 별표 PDF는 어절 경계가 공백 문자가 아니라 글리프 간격으로만 표현돼
+    get_text()가 '계약을체결또는이행하지않은자'식 무공백 텍스트를 뱉는다
+    (2026-07-30 배터리 업체-062 — BM25 토큰·substring 검색 전멸). 문자 bbox
+    간격이 글자 크기 대비 크게 벌어진 지점을 공백으로 복원한다(실측: 어절 간
+    4.8~6.0pt vs 자내 ±0.1pt).
+    """
     import fitz  # pymupdf
     doc = fitz.open(path)
-    return "\n".join(page.get_text() for page in doc)
+    pages = []
+    for page in doc:
+        lines = []
+        for block in page.get_text("rawdict").get("blocks", []):
+            for line in block.get("lines", []):
+                buf: list[str] = []
+                prev_x1: float | None = None
+                for span in line.get("spans", []):
+                    size = span.get("size") or 10.0
+                    for ch in span.get("chars", []):
+                        if prev_x1 is not None and ch["bbox"][0] - prev_x1 > size * 0.15:
+                            buf.append(" ")
+                        buf.append(ch["c"])
+                        prev_x1 = ch["bbox"][2]
+                lines.append(re.sub(r" {2,}", " ", "".join(buf)).strip())
+        pages.append("\n".join(l for l in lines if l))
+    return "\n".join(pages)
 
 
 def _chunks(text: str, label: str, key: str) -> list[dict]:
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
     out = []
-    for i in range(0, len(text), CHUNK_MAX):
+    for n, i in enumerate(range(0, max(len(text) - (CHUNK_MAX - CHUNK_STEP), 1), CHUNK_STEP)):
         out.append({
-            "chunk_id": f"{key}_{i // CHUNK_MAX:03d}",
+            "chunk_id": f"{key}_{n:03d}",
             "content": f"[{label}]\n{text[i:i + CHUNK_MAX]}",
             "law_name": label,
             "law_ref": label,
@@ -148,6 +177,10 @@ def main() -> int:
     col = chromadb.PersistentClient(get_settings().chroma_path).get_collection(
         get_settings().collection_admin_rules, embedding_function=GeminiEmbeddingFunction())
     before = col.count()
+    # 공백 복원으로 청크 수가 달라질 수 있음 — 이번에 재생성된 라벨의 기존 청크를
+    # 먼저 지워 잔재(구 무공백 꼬리 청크)가 남지 않게 한다. upsert만으론 못 지움.
+    for label in {c["law_ref"] for c in all_chunks}:
+        col.delete(where={"law_ref": label})
     col.upsert(
         ids=[c["chunk_id"] for c in all_chunks],
         documents=[c["content"] for c in all_chunks],

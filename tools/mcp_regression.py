@@ -86,6 +86,14 @@ CASES = [
     ("R9-판례본문미제공-가시화",   # 검색엔 뜨나 본문 미제공 판례가 빈 필드로 침묵하던
      "get_case", {"kind": "prec", "case_id": "417684"},   # 결함(배터리 제보) 수리 회귀
      lambda d: d.get("error") == "case_body_unavailable" and "hint" in d),
+    ("R10-전자조달법-수록",       # 나라장터 투찰 질문에서 404였던 전자조달법 3종
+     "get_law_article", {"ref": "전자조달법 제7조"},        # 법령팩 수록(배터리 업체-059) 회귀
+     lambda d: "전자입찰" in d.get("content", "") and d.get("law_name") == "전자조달법"),
+    ("R11-별표-무공백-계약미체결",  # 별표 PDF 무공백 추출로 '계약 미체결' 행이 검색
+     "search_references",         # 불능이던 결함(배터리 업체-062) — 공백 복원+700자
+     {"query": "계약을 체결 또는 이행하지 않은 자 부정당업자 제재기간", "top_k": 10},  # 청크 회귀
+     lambda d: any("별표" in h.get("section", "") and "계약을 체결" in h.get("excerpt", "")
+                   for h in d.get("hits", []))),
 ]
 
 

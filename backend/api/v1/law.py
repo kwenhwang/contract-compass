@@ -203,16 +203,40 @@ def search_references(
     # 임베딩 비용·외부 API 보호를 위해 요청 자체를 계상한다.
     limiter.record(limiter.check(request, LIMITS_LLM))
     chunks = rag.search_all(q.strip(), top_k=top_k)
-    return [
-        {
+
+    # excerpt를 청크 앞 600자 고정이 아니라 질의 토큰 첫 매치 주변으로 창을 잡는다 —
+    # 별표류 긴 청크(1,200자)는 정답 행이 뒤쪽에 있으면 회수돼도 본문이 안 보였다
+    # (2026-07-30 배터리 업체-062: 부정당 별표2 '계약 미체결' 행).
+    q_tokens = [t for t in q.split() if len(t) >= 2]
+
+    def _excerpt(content: str) -> str:
+        if len(content) <= 600 or not q_tokens:
+            return content[:600]
+        # 300자 보폭으로 600자 창을 밀며 질의 토큰 매치 수가 최대인 창을 고른다
+        # (동률이면 앞쪽 창 — 기존 head-600과 호환). 토큰 가중치는 길이(특이도 근사).
+        best_start, best_score = 0, -1
+        for start in range(0, len(content) - 300, 300):
+            win = content[start:start + 600]
+            score = sum(len(t) for t in q_tokens if t in win)
+            if score > best_score:
+                best_start, best_score = start, score
+        return ("..." if best_start else "") + content[best_start:best_start + 600]
+
+    def _row(c: dict) -> dict:
+        content = c.get("content") or ""
+        section = c.get("section_title") or ""
+        # 별표(제재기준·심사기준 표) 청크는 답이 특정 행 하나에 있어 어떤 절단도
+        # 손실이다 — 청크 자체가 1,200자 캡(fetch_law_tables)이므로 전문 반환.
+        excerpt = content[:1400] if "별표" in section else _excerpt(content)
+        return {
             "source": c.get("document_id") or "",
-            "section": c.get("section_title") or "",
+            "section": section,
             "source_type": c.get("source_type") or "",
-            "excerpt": _clean_markers((c.get("content") or "")[:600]),
+            "excerpt": _clean_markers(excerpt),
             "relevance": round(float(c.get("relevance_score") or 0), 3),
         }
-        for c in chunks[: top_k * 2]
-    ]
+
+    return [_row(c) for c in chunks[: top_k * 2]]
 
 
 @router.get("/search", response_model=list[LawSearchHit])
