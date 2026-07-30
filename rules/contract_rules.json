@@ -2385,6 +2385,135 @@
       }
     },
     {
+      "rule_id": "CST_PRO_001",
+      "contract_type": "construction",
+      "name": "전문공사 일반경쟁입찰 (고시금액 이상)",
+      "priority": 80,
+      "conditions": {
+        "estimated_price_gte": 230000000,
+        "construction_specialty": "professional_generic"
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사 (공사 적격심사 세부기준 — 전문공사)",
+        "pass_score_by_amount": {
+          "gte_10000000000": {
+            "pass_score": null,
+            "schedule": "종합심사낙찰제",
+            "_note": "종합심사낙찰제 — 낙찰하한율 개념 없음(최고득점)"
+          },
+          "gte_5000000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.87495,
+            "byeolpyo": "별표3(준용)"
+          },
+          "gte_1000000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.88745,
+            "byeolpyo": "별표4"
+          },
+          "gte_300000000": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.89745,
+            "byeolpyo": "별표4"
+          },
+          "gte_0": {
+            "pass_score": 95,
+            "lower_limit_rate": 0.89745,
+            "byeolpyo": "별표6·7"
+          }
+        },
+        "license_required": "해당 전문공사업 등록 (건설산업기본법 제9조)",
+        "applicable_criteria": "공사 적격심사 세부기준 (발주기관별)",
+        "special_notes": [
+          "입찰참가자격: 해당 전문공사업(건설산업기본법 시행령 별표1) 등록업체 한정 (건설산업기본법 제9조·제16조)",
+          "적격심사: 발주기관별 공사 적격심사 세부기준 적용 — 별표 금액구간 매핑은 소속 기관 세부기준을 확인하세요"
+        ],
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "건설산업기본법 제9조 (건설업 등록)",
+        "건설산업기본법 제16조 (시공자격)",
+        "국가계약법 시행령 제42조 (적격심사)"
+      ],
+      "notes": "건설산업기본법 시행령 별표1 전문공사 14종, 고시금액(2.3억) 이상 일반경쟁(적격심사). 2026-07-30 P0: electrical 룰 겸용 제거에 따른 전문공사 전용 룰 신설.",
+      "source": {
+        "document": "건설산업기본법·공사 적격심사 세부기준",
+        "page": null,
+        "paragraph": "제9조, 제16조"
+      }
+    },
+    {
+      "rule_id": "CST_PRO_002",
+      "contract_type": "construction",
+      "name": "전문공사 일반경쟁(적격심사) — 2억 초과",
+      "priority": 115,
+      "conditions": {
+        "estimated_price_gte": 200000000,
+        "estimated_price_lt": 230000000,
+        "construction_specialty": "professional_generic"
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사 (공사 적격심사 세부기준 — 전문공사)",
+        "pass_score": 95,
+        "lower_limit_rate": 0.89745,
+        "license_required": "해당 전문공사업 등록 (건설산업기본법 제9조)",
+        "applicable_criteria": "공사 적격심사 세부기준 (발주기관별)",
+        "special_notes": [
+          "입찰참가자격: 해당 전문공사업(건설산업기본법 시행령 별표1) 등록업체 한정",
+          "지역제한 가능: 전문공사의 지역제한 상한은 10억원 — 이 구간(2억~2.3억)은 상한 미만"
+        ],
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "건설산업기본법 제9조 (건설업 등록)",
+        "국가계약법 시행령 제42조 (적격심사)"
+      ],
+      "notes": "전문공사 소액수의 한도(2억) 초과~고시금액(2.3억) 미만 구간 — 일반경쟁(적격심사). 경계 2억 정확값은 '이하'라 소액수의 룰(CST_PRO_003)이 우선 매칭된다.",
+      "source": {
+        "document": "건설산업기본법",
+        "page": null,
+        "paragraph": "제9조"
+      }
+    },
+    {
+      "rule_id": "CST_PRO_003",
+      "contract_type": "construction",
+      "name": "전문공사 소액수의/소액전자 (2억 이하)",
+      "priority": 130,
+      "conditions": {
+        "construction_specialty": "professional_generic",
+        "estimated_price_lte": 200000000
+      },
+      "result": {
+        "method": "소액수의계약",
+        "bidder_selection": "수의계약 (소액)",
+        "pass_score": null,
+        "lower_limit_rate": 0.89745,
+        "license_required": "해당 전문공사업 등록 (건설산업기본법 제9조)",
+        "applicable_criteria": "국가계약법 시행령 제26조 제1항 제5호",
+        "special_notes": [
+          "입찰참가자격: 해당 전문공사업 등록업체 한정",
+          "2천만원 초과: 2인 이상 견적서 징구 필수"
+        ],
+        "procurement_agency": "자체구매",
+        "bidder_options": []
+      },
+      "legal_basis": [
+        "국가계약법 시행령 제26조 제1항 제5호 (소액수의)",
+        "건설산업기본법 제9조 (건설업 등록)"
+      ],
+      "notes": "건설산업기본법에 따른 전문공사 — 시행령 제26조 제1항 제5호 가목1) 기준 2억 이하 수의계약 가능(종합공사 4억·그 밖의 공사 관련 법령 1.6억과 구분). 해당 전문공사업 등록업체와 계약.",
+      "source": {
+        "document": "국가계약법 시행령",
+        "page": null,
+        "paragraph": "제26조 제1항 제5호 가목"
+      }
+    },
+    {
       "rule_id": "CST_FIRE_001",
       "contract_type": "construction",
       "name": "소방시설공사 일반경쟁입찰 (고시금액 이상)",
@@ -2981,7 +3110,7 @@
       "name": "공사 소액수의(지자체 전문 2억 이하)",
       "priority": 38,
       "conditions": {
-        "construction_specialty": "electrical",
+        "construction_specialty": "professional_generic",
         "estimated_price_lte": 200000000
       },
       "result": {
@@ -2999,7 +3128,7 @@
       "name": "공사 경쟁입찰 적격심사(지자체 전문 2억 이상)",
       "priority": 46,
       "conditions": {
-        "construction_specialty": "electrical",
+        "construction_specialty": "professional_generic",
         "estimated_price_gte": 200000000
       },
       "result": {

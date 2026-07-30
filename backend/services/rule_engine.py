@@ -105,11 +105,14 @@ class RuleEngine:
                 if params.get("negotiation_reason") != val:
                     return False
             elif key == "construction_specialty":
-                # F20-C1 (2026-06-10): 건설산업기본법 시행령 별표1 전문 14개 → "electrical" 그룹 매칭.
-                # 14개 모두 전문공사로 PDF 기준 2억 임계값 동일. 룰은 CST_ELEC_* 재사용.
-                # 법령공사 그룹(other 포함)은 fire_safety/cultural_heritage 룰 재사용.
+                # F20-C1 (2026-06-10) → 2026-07-30 P0 수리: 전문공사(건산법 별표1 14종)는
+                # "professional_generic" 센티널 룰(CST_PRO_*·LOCAL_CST_*_PRO)에 매칭한다.
+                # 전기·정보통신은 건산법 전문공사가 아니라 각자 법령(전기공사업법·정보통신공사업법,
+                # 소액수의 1.6억)이 적용되는 '그 밖의 공사' — electrical 겸용 시절엔
+                # 전문 14종이 1.6억 룰(CST_ELEC_*)에, 전기공사가 2억 룰(LOCAL_*_PRO)에
+                # 양방향 오판정됐다. 법령공사 그룹(other 포함)은 fire_safety 룰 재사용.
                 p_spec = params.get("construction_specialty")
-                PRO_GROUP = {"electrical", "ict", "ground_paving", "interior",
+                PRO_GROUP = {"ground_paving", "interior",
                              "metal_window_roof", "painting_waterproof", "landscape",
                              "steel_structure", "underwater_dredging", "elevator",
                              "mechanical", "gas_heating", "water_sewer",
@@ -117,8 +120,8 @@ class RuleEngine:
                 LEGAL_GROUP = {"fire_safety", "cultural_heritage", "other"}
                 if p_spec == val:
                     pass  # 정확 일치
-                elif val == "electrical" and p_spec in PRO_GROUP:
-                    pass  # 전문공사 14개는 electrical 룰에 매칭
+                elif val == "professional_generic" and p_spec in PRO_GROUP:
+                    pass  # 건산법 전문공사 14종 → 전문공사 공용 룰
                 elif val == "fire_safety" and p_spec in LEGAL_GROUP:
                     pass  # 법령공사는 fire_safety 룰에 매칭
                 else:

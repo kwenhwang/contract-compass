@@ -57,6 +57,51 @@ _CACHE_TTL = 6 * 3600
 _CACHE_MAX = 200
 _answer_cache: "OrderedDict[str, tuple[float, dict]]" = OrderedDict()
 
+# 2026-07-30 P0: rerank 무산출 시 완화 경로 은폐 차단 — 출처 문턱 상수(비스트림·스트림 공용).
+# 배경: BM25-only 후보는 rag_service가 relevance_score=0.6을 하드코딩하는데 dense 문턱
+# MIN_RELEVANCE=0.60과 경계가 같아, rerank가 죽어 있으면(키 미설정·호출 실패) 검증 없이
+# 항상 통과했다. rerank 무산출이면 (1) dense 문턱 상향 (2) BM25-only 후보 배제로 fail-closed.
+_MIN_RELEVANCE = 0.60          # dense fallback (rerank 있을 때의 안전망)
+_INTERNAL_LAW_MIN = 0.85       # internal/law dense fallback
+_MIN_RELEVANCE_NO_RERANK = 0.80    # rerank 무산출 시 상향 문턱
+_INTERNAL_LAW_MIN_NO_RERANK = 0.92
+_RERANK_GENERAL = 0.05         # cross-encoder: 명백히 무관만 컷
+_RERANK_INTERNAL_LAW = 0.15    # internal/law는 약간 더 엄격 (무관 강제 노출 차단)
+_rerank_inactive_warned = False
+
+
+def _apply_rerank_guard(chunks: list[dict]) -> tuple[list[dict], bool]:
+    """rerank 산출물(_rerank_score) 유무로 비활성을 판정해 가드 적용.
+
+    판정을 설정값이 아니라 실제 산출물로 하는 이유: 키가 있어도 한도 초과·네트워크
+    오류로 rerank()가 입력을 그대로 반환하는 경로가 있다(무산출 = 동일하게 미검증).
+    반환: (BM25-only 배제된 후보, no_rerank 플래그). 경고는 프로세스당 최초 1회.
+    """
+    global _rerank_inactive_warned
+    if not chunks or any(c.get("_rerank_score") is not None for c in chunks):
+        return chunks, False
+    if not _rerank_inactive_warned:
+        import logging
+        logging.getLogger("contract_compass").warning(
+            "rerank 비활성(COHERE_API_KEY/RERANK_ENDPOINT 미설정 또는 호출 실패) — "
+            "dense 문턱 %.2f/%.2f 상향 + BM25-only 후보 배제로 동작",
+            _MIN_RELEVANCE_NO_RERANK, _INTERNAL_LAW_MIN_NO_RERANK)
+        _rerank_inactive_warned = True
+    # BM25-only 후보는 relevance_score가 하드코딩(0.6)이라 rerank 없이는 검증 수단이 없다
+    return [c for c in chunks if not c.get("bm25_only")], True
+
+
+def _chunk_passes(c: dict, no_rerank: bool) -> bool:
+    """출처 노출 문턱 — rerank 점수 우선, 무산출 시 상향된 dense 문턱."""
+    rs = c.get("_rerank_score")
+    is_il = c.get("source_type") in ("internal", "law")
+    if rs is not None:
+        return rs >= (_RERANK_INTERNAL_LAW if is_il else _RERANK_GENERAL)
+    score = c.get("relevance_score", 0.0)
+    if no_rerank:
+        return score >= (_INTERNAL_LAW_MIN_NO_RERANK if is_il else _MIN_RELEVANCE_NO_RERANK)
+    return score >= (_INTERNAL_LAW_MIN if is_il else _MIN_RELEVANCE)
+
 
 def _norm_query(q: str) -> str:
     return re.sub(r"\s+", " ", q).strip().lower()
@@ -604,6 +649,8 @@ async def ask_question(
     _t1 = _time.time()
     chunks = _cohere_rerank(req.question, chunks, top_n=8)  # 10→8
     _t_rerank = _time.time() - _t1
+    # 2026-07-30 P0: rerank 무산출이면 BM25-only 배제 + 문턱 상향(전량 배제 시 0-hit fail-closed로 합류)
+    chunks, _no_rerank = _apply_rerank_guard(chunks)
     if not chunks:
         import logging
         logging.getLogger("contract_compass").warning("RAG 0-hit — LLM 호출 생략: %s", req.question[:80])
@@ -638,20 +685,11 @@ async def ask_question(
         "total_ms": round((_time.time() - _t0) * 1000, 1),
     }
 
-    MIN_RELEVANCE = 0.60         # dense fallback (rerank 없을 때만)
-    INTERNAL_LAW_MIN = 0.85      # internal/law dense fallback
-    RERANK_GENERAL = 0.05        # cross-encoder: 명백히 무관만 컷
-    RERANK_INTERNAL_LAW = 0.15   # internal/law는 약간 더 엄격 (무관 강제 노출 차단)
+    # 문턱 상수·판정은 모듈 공용(_chunk_passes) — 스트림 경로와 사본 분화 금지 (2026-07-30)
+    _il_min = _INTERNAL_LAW_MIN_NO_RERANK if _no_rerank else _INTERNAL_LAW_MIN
 
     def _passes_filter(c: dict) -> bool:
-        rerank = c.get("_rerank_score")
-        is_il = c.get("source_type") in ("internal", "law")
-        # rerank 있으면 cross-encoder 기준 우선 (dense score보다 정확)
-        if rerank is not None:
-            return rerank >= (RERANK_INTERNAL_LAW if is_il else RERANK_GENERAL)
-        # rerank 실패 시 dense fallback
-        score = c.get("relevance_score", 0.0)
-        return score >= (INTERNAL_LAW_MIN if is_il else MIN_RELEVANCE)
+        return _chunk_passes(c, _no_rerank)
 
     sources = [
         AskSource(
@@ -671,7 +709,7 @@ async def ask_question(
     ][:5]
     # 기관 내규가 답변 컨텍스트에 쓰였는데 출처에서 누락되면 1건 보장(0.85+ 진짜 매칭만)
     if not any(s.source_type == "internal" for s in sources):
-        _i = next((c for c in chunks if c.get("source_type") == "internal" and c.get("relevance_score", 0) >= INTERNAL_LAW_MIN), None)
+        _i = next((c for c in chunks if c.get("source_type") == "internal" and c.get("relevance_score", 0) >= _il_min), None)
         if _i:
             sources = sources[:4] + [AskSource(
                 chunk_id=_i["chunk_id"], section_title=_i.get("section_title", ""),
@@ -730,6 +768,8 @@ async def ask_stream(
             chunks = _cohere_rerank(req.question, chunks, top_n=8)
         except Exception:
             pass
+        # 2026-07-30 P0: rerank 무산출이면 BM25-only 배제 + 문턱 상향 (비스트림 경로와 동일)
+        chunks, _no_rerank = _apply_rerank_guard(chunks)
         if not chunks:                       # fail-closed: 근거 0건 → LLM 생략 (비스트림 경로와 동일)
             import logging
             logging.getLogger("contract_compass").warning("RAG 0-hit(stream) — LLM 호출 생략: %s", req.question[:80])
@@ -744,19 +784,11 @@ async def ask_stream(
         context = _build_context(chunks, max_chars=10000)
         user_msg = f"{_screen_context_prefix(req.context)}[참고 자료]\n{context}\n\n[질문]\n{req.question}"
 
-        # 소스 먼저 전송 (UI가 빨리 출처 박스 준비)
-        MIN_RELEVANCE = 0.60
-        INTERNAL_LAW_MIN = 0.85
-        RERANK_GENERAL = 0.05
-        RERANK_INTERNAL_LAW = 0.15
+        # 소스 먼저 전송 (UI가 빨리 출처 박스 준비) — 문턱은 모듈 공용 _chunk_passes (2026-07-30)
+        _il_min = _INTERNAL_LAW_MIN_NO_RERANK if _no_rerank else _INTERNAL_LAW_MIN
 
         def _pass(c: dict) -> bool:
-            rerank = c.get("_rerank_score")
-            is_il = c.get("source_type") in ("internal", "law")
-            if rerank is not None:
-                return rerank >= (RERANK_INTERNAL_LAW if is_il else RERANK_GENERAL)
-            score = c.get("relevance_score", 0.0)
-            return score >= (INTERNAL_LAW_MIN if is_il else MIN_RELEVANCE)
+            return _chunk_passes(c, _no_rerank)
 
         sources = [
             {
@@ -775,7 +807,7 @@ async def ask_stream(
         ][:5]
         # 기관 내규 출처 1건 보장 (0.85+ 진짜 매칭만)
         if not any(s.get("source_type") == "internal" for s in sources):
-            _i = next((c for c in chunks if c.get("source_type") == "internal" and c.get("relevance_score", 0) >= INTERNAL_LAW_MIN), None)
+            _i = next((c for c in chunks if c.get("source_type") == "internal" and c.get("relevance_score", 0) >= _il_min), None)
             if _i:
                 sources = sources[:4] + [{
                     "chunk_id": _i["chunk_id"], "section_title": _i.get("section_title", ""),

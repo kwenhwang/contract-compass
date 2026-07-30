@@ -331,6 +331,92 @@
       ]
     },
     {
+      "desc": "철강구조물(전문) 1.8억 — 2억 이하 소액수의 (2026-07-30 P0: electrical 겸용 오배제 수리)",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "construction",
+        "estimated_price": 180000000,
+        "construction_specialty": "steel_structure"
+      },
+      "expect_rule_id": "CST_PRO_003",
+      "expect_method": "소액수의계약",
+      "expect_top3": [
+        "CST_PRO_003"
+      ]
+    },
+    {
+      "desc": "철강구조물(전문) 2.1억 — 2억 초과 일반경쟁",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "construction",
+        "estimated_price": 210000000,
+        "construction_specialty": "steel_structure"
+      },
+      "expect_rule_id": "CST_PRO_002",
+      "expect_method": "일반경쟁입찰",
+      "expect_top3": [
+        "CST_PRO_002"
+      ]
+    },
+    {
+      "desc": "철강구조물(전문) 2억 경계 — 이하 포함(ELEC 1.6억 경계와 동일 규약)",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "construction",
+        "estimated_price": 200000000,
+        "construction_specialty": "steel_structure"
+      },
+      "expect_rule_id": "CST_PRO_002",
+      "expect_method": "일반경쟁입찰",
+      "expect_top3": [
+        "CST_PRO_002",
+        "CST_PRO_003"
+      ]
+    },
+    {
+      "desc": "전기공사 1.7억 지자체 — 1.6억 초과라 소액수의 불가 (2026-07-30 P0: 2억 룰 오추천 수리)",
+      "org_type": "local",
+      "params": {
+        "contract_type": "construction",
+        "estimated_price": 170000000,
+        "construction_specialty": "electrical"
+      },
+      "expect_rule_id": "CST_ELEC_002",
+      "expect_method": "일반경쟁입찰",
+      "expect_top3": [
+        "CST_ELEC_002"
+      ]
+    },
+    {
+      "desc": "철강구조물(전문) 1.9억 지자체 — 지방계약법 전문 2억 이하 소액수의",
+      "org_type": "local",
+      "params": {
+        "contract_type": "construction",
+        "estimated_price": 190000000,
+        "construction_specialty": "steel_structure"
+      },
+      "expect_rule_id": "LOCAL_CST_NEGO_PRO",
+      "expect_method": "소액수의계약",
+      "expect_top3": [
+        "LOCAL_CST_NEGO_PRO",
+        "CST_PRO_003"
+      ]
+    },
+    {
+      "desc": "정보통신공사 1.5억 — ICT 단독 매칭(2026-07-30 P0: CST_ELEC 동시매칭 수리)",
+      "org_type": "public_corp",
+      "params": {
+        "contract_type": "construction",
+        "estimated_price": 150000000,
+        "construction_specialty": "ict"
+      },
+      "expect_rule_id": "CST_ICT_003",
+      "expect_method": "소액수의계약",
+      "expect_top3": [
+        "CST_ICT_003"
+      ]
+    },
+    {
       "desc": "소방공사 3억",
       "org_type": "public_corp",
       "params": {

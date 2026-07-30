@@ -196,7 +196,8 @@ def build_decision_pack(
     rule_conds = rule.get("conditions", {})
     extra_facts: list[str] = []
     SPEC_LABEL = {
-        "general": "종합공사", "electrical": "전기공사", "ict": "정보통신공사",
+        "general": "종합공사", "professional_generic": "전문공사(건산법 14종)",
+        "electrical": "전기공사", "ict": "정보통신공사",
         "fire_safety": "소방시설공사", "cultural_heritage": "문화재수리", "other": "기타 법령공사",
         "ground_paving": "지반조성·포장", "interior": "실내건축", "metal_window_roof": "금속창호·지붕",
         "painting_waterproof": "도장·습식·방수", "landscape": "조경식재", "steel_structure": "철강구조물",

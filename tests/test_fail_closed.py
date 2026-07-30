@@ -47,16 +47,22 @@ def test_ask_zero_hit_not_cached():
 #   기존 test_llm_cost_guard 는 소스 문자열 카운트라 순서·경로를 검증 못 함.
 #   실제 불변식: RAG 0-hit(LLM 미호출)는 전역 일일 캡은 미차감하되 IP 스로틀엔 계상.
 
+def _ip_hits(rl, ip: str) -> int:
+    # 2026-07-30: 리미터 SQLite(WAL) 전환(ba9181a)에 맞춰 인메모리 _ips 대신 DB를 직접 센다
+    return rl._connect().execute(
+        "SELECT COUNT(*) FROM llm_hits WHERE ip = ?", (ip,)).fetchone()[0]
+
+
 def test_zero_hit_counted_in_ip_window():
     """0-hit 요청도 IP별 sliding window에는 계상돼야 무한 재시도 증폭이 막힌다."""
     from backend.services.rate_limiter import get_rate_limiter
     ip = "203.0.113.7"  # 비화이트리스트 (테스트 격리용 TEST-NET-3)
     rl = get_rate_limiter()
-    before = len(rl._ips[ip].times)
+    before = _ip_hits(rl, ip)
     asyncio.run(ask_mod.ask_question(
         ask_mod.AskRequest(question="IP 스로틀 계상 확인 XYZZY-0724"),
         rag=_EmptyRAG(), llm=_BoomLLM(), client_ip=ip))
-    assert len(rl._ips[ip].times) == before + 1
+    assert _ip_hits(rl, ip) == before + 1
 
 
 def test_zero_hit_does_not_charge_daily_cap(monkeypatch):
@@ -79,13 +85,13 @@ def test_cache_hit_charges_nothing(monkeypatch):
     ask_mod._cache_set(q, {"answer": "미리 넣은 답", "sources": [], "timing": None,
                            "unverified_citations": [], "avg_relevance": 0.7})
     rl = get_rate_limiter()
-    before = len(rl._ips[ip].times)
+    before = _ip_hits(rl, ip)
     charged = {"n": 0}
     monkeypatch.setattr(rl_mod.DailyCallCap, "record", lambda self: charged.__setitem__("n", charged["n"] + 1))
     resp = asyncio.run(ask_mod.ask_question(
         ask_mod.AskRequest(question=q), rag=_EmptyRAG(), llm=_BoomLLM(), client_ip=ip))
     assert resp.answer == "미리 넣은 답"
-    assert len(rl._ips[ip].times) == before
+    assert _ip_hits(rl, ip) == before
     assert charged["n"] == 0
 
 

@@ -25,8 +25,9 @@ NEG_ORDER = ["rebid_failure", "rebid", "urgent", "technical_difficulty",
              "patent_new_tech", "specific_person", "small_repeat", "other_justified"]
 SERVICE_TYPE_LABELS = {"academic": "학술용역", "facility": "시설용역", "it_service": "정보화사업",
                        "technical": "기술용역", "other": "기타용역"}
-SPECIALTY_LABELS = {"general": "일반(종합)공사", "electrical": "전문공사(전기 등 14종)",
-                    "ict": "정보통신공사", "fire_safety": "소방·법령공사", "cultural_heritage": "문화재공사"}
+SPECIALTY_LABELS = {"general": "일반(종합)공사", "electrical": "전기공사",
+                    "ict": "정보통신공사", "fire_safety": "소방·법령공사", "cultural_heritage": "문화재공사",
+                    "professional_generic": "전문공사(건산법 14종)"}
 RESTRICTION_LABELS = {
     "is_simple_labor": "단순노무", "is_sme_competition_product": "중기간 경쟁제품",
     "is_sme_mandatory": "중소기업 의무구매", "is_social_enterprise": "사회적기업",
@@ -120,7 +121,8 @@ def make_dimensions(engine: RuleEngine, contract_type: str, org_type: str) -> li
     # 2) 공사 전문분야 (construction 전용) — 엔진 그룹매핑 대표값
     if contract_type == "construction" and "construction_specialty" in present:
         opts = [{"label": SPECIALTY_LABELS.get(s, s), "patch": {"construction_specialty": s}}
-                for s in ["general", "electrical", "ict", "fire_safety", "cultural_heritage"]]
+                for s in ["general", "professional_generic", "electrical", "ict",
+                          "fire_safety", "cultural_heritage"]]
         dims.append({"id": "specialty", "label": "공사 종류", "options": opts})
 
     # 3) 추정가격 구간
