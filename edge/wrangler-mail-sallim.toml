@@ -1,0 +1,5 @@
+# sallim.app 수신 메일 워커 — 배포는 순수 API(upload_mail_worker 참조) 또는 wrangler
+name = "sallim-mail-in"
+main = "mail-worker.js"
+compatibility_date = "2026-07-01"
+account_id = "6c148ef797904bef066d6340faada981"

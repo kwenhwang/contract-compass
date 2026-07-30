@@ -362,7 +362,7 @@ _PRICING_HTML = """<!doctype html><html lang="ko"><meta charset="utf-8">
 <tr><td>PRO 키</td><td>키당 2,000콜</td><td>동일 + 우선 지원</td><td>30일 9,900원 · 90일 24,900원</td></tr>
 </table>
 <p>자동결제 없음 — 기간 만료 시 무료 티어로 자연 복귀합니다. 키는 결제 확인 후 수동
-발급되며(영업일 1일 내), 문의·구매: <b>sallimapp@gmail.com</b> 또는 GitHub 이슈.</p>
+발급되며(영업일 1일 내), 문의·구매: <b>contract@sallim.app</b> 또는 GitHub 이슈.</p>
 <h2>연결 방법</h2>
 <pre style="background:#f4f4f5;padding:12px;border-radius:8px;overflow-x:auto">
 # Claude Code
@@ -390,6 +390,77 @@ async def _pricing(request):  # noqa: ANN001
 
 for _pp in ("/pricing", "/mcp/pricing"):
     server.custom_route(_pp, methods=["GET"], include_in_schema=False)(_pricing)
+
+
+# ── Lemon Squeezy 구매 웹훅 (2026-07-30) ─────────────────────────────────────
+# LS License Keys가 결제 시 키 생성·고객 이메일 발송까지 담당 — 이 웹훅은 그 키를
+# 대장(keystore)에 미러해 기존 sha256 인증 경로(auth.py 무수정)로 수용하고,
+# 주문·금액·고객을 매출 대장에 자동 기록한다. 환불류 이벤트는 키 회수.
+# 시크릿(LEMONSQUEEZY_WEBHOOK_SECRET) 미설정이면 503 — 계정 연결 전 비활성 상태.
+_LS_PLANS_ENV = "LS_VARIANT_PLANS"  # JSON: {"variant_id": {"days":30,"daily":2000,"amount_krw":9900,"label":"PRO 30일"}}
+
+
+def _ls_plans() -> dict:
+    try:
+        return _json.loads(os.environ.get(_LS_PLANS_ENV, "") or "{}")
+    except Exception:
+        return {}
+
+
+async def _purchase_webhook(request):  # noqa: ANN001
+    import hashlib as _hl
+    import hmac as _hmac
+
+    from starlette.responses import JSONResponse
+    secret = os.environ.get("LEMONSQUEEZY_WEBHOOK_SECRET", "")
+    if not secret:
+        return JSONResponse({"error": "webhook_disabled"}, status_code=503)
+    raw = await request.body()
+    sig = request.headers.get("x-signature", "")
+    expect = _hmac.new(secret.encode(), raw, _hl.sha256).hexdigest()
+    if not _hmac.compare_digest(sig, expect):
+        return JSONResponse({"error": "bad_signature"}, status_code=401)
+
+    import keystore
+    try:
+        payload = _json.loads(raw)
+    except Exception:
+        return JSONResponse({"error": "bad_json"}, status_code=400)
+    event = (payload.get("meta") or {}).get("event_name", "")
+    attrs = (payload.get("data") or {}).get("attributes", {}) or {}
+
+    if event == "license_key_created":
+        ls_key = attrs.get("key", "")
+        if not ls_key:
+            return JSONResponse({"error": "no_key"}, status_code=400)
+        variant = str(attrs.get("variant_id") or (attrs.get("order_item") or {}).get("variant_id") or "")
+        plan = _ls_plans().get(variant, {})
+        _, rec = keystore.issue(
+            name=plan.get("label", f"LS variant {variant}"),
+            days=int(plan.get("days", 30)),
+            daily=int(plan.get("daily", 2000)),
+            channel="lemonsqueezy",
+            amount_krw=int(plan.get("amount_krw", 0)),
+            contact=attrs.get("user_email", "") or attrs.get("customer_email", ""),
+            order_id=f"ls-{attrs.get('order_id', payload.get('data', {}).get('id', ''))}",
+            key=ls_key, source="ls_mirror",
+        )
+        return JSONResponse({"ok": True, "key_prefix": rec["key_prefix"]})
+
+    if event in ("order_refunded", "subscription_expired", "subscription_cancelled",
+                 "license_key_updated"):
+        # license_key_updated는 비활성화(disabled) 신호일 때만 회수
+        if event == "license_key_updated" and attrs.get("status") not in ("disabled", "inactive"):
+            return JSONResponse({"ok": True, "ignored": True})
+        order_ref = f"ls-{attrs.get('order_id', payload.get('data', {}).get('id', ''))}"
+        rec = keystore.revoke_by_order(order_ref)
+        return JSONResponse({"ok": True, "revoked": bool(rec)})
+
+    return JSONResponse({"ok": True, "ignored": event})
+
+
+for _wp in ("/purchase-webhook", "/mcp/purchase-webhook"):
+    server.custom_route(_wp, methods=["POST"], include_in_schema=False)(_purchase_webhook)
 
 
 if __name__ == "__main__":
