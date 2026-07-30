@@ -1,0 +1,7 @@
+# sallim 계정용 배포 설정 — 같은 worker.js, 정식 도메인 라우트 (2026-07-30)
+# 배포: CLOUDFLARE_API_TOKEN=<cf-sallim> wrangler deploy -c wrangler-sallim.toml
+name = "contract-edge"
+main = "worker.js"
+compatibility_date = "2026-07-01"
+account_id = "6c148ef797904bef066d6340faada981"
+routes = [{ pattern = "contract.sallim.app/*", zone_name = "sallim.app" }]

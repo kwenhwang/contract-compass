@@ -362,8 +362,7 @@ _PRICING_HTML = """<!doctype html><html lang="ko"><meta charset="utf-8">
 <tr><td>PRO 키</td><td>키당 2,000콜</td><td>동일 + 우선 지원</td><td>30일 9,900원 · 90일 24,900원</td></tr>
 </table>
 <p>자동결제 없음 — 기간 만료 시 무료 티어로 자연 복귀합니다. 키는 결제 확인 후 수동
-발급되며(영업일 1일 내), 문의·구매: <a href="https://contract.naru.build">계약나침반 웹</a>
-하단 피드백 또는 GitHub 이슈.</p>
+발급되며(영업일 1일 내), 문의·구매: <b>sallimapp@gmail.com</b> 또는 GitHub 이슈.</p>
 <h2>연결 방법</h2>
 <pre style="background:#f4f4f5;padding:12px;border-radius:8px;overflow-x:auto">
 # Claude Code
