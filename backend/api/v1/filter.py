@@ -642,14 +642,21 @@ async def step2(
     deterministic_legal_basis = list(deterministic_legal_basis or [])
     ac = req.additional_conditions or {}
     restriction_label = ""
+    # 2026-07-30 R8: 지자체는 제한입찰 근거가 지방계약법 시행령 제20조 — 국가 조문 혼입 방지
+    _is_local_org = merged_params.get("org_type") == "local"
     if ac.get("performance_restriction"):
         restriction_label = "실적제한"
-        if not any("21조" in s for s in deterministic_legal_basis):
-            deterministic_legal_basis.append("국가계약법 시행령 제21조 제1항 제1호 (실적제한)")
+        if not any("21조" in s or "20조" in s for s in deterministic_legal_basis):
+            deterministic_legal_basis.append(
+                "지방계약법 시행령 제20조 (제한입찰 — 실적제한)" if _is_local_org
+                else "국가계약법 시행령 제21조 제1항 제1호 (실적제한)")
     elif ac.get("regional_restriction"):
         restriction_label = "지역제한"
-        if not any("21조 제1항 제6호" in s or "21조1항6호" in s for s in deterministic_legal_basis):
-            deterministic_legal_basis.append("국가계약법 시행령 제21조 제1항 제6호 (지역제한)")
+        if not any("21조 제1항 제6호" in s or "21조1항6호" in s or "20조" in s
+                   for s in deterministic_legal_basis):
+            deterministic_legal_basis.append(
+                "지방계약법 시행령 제20조 (제한입찰 — 지역제한)" if _is_local_org
+                else "국가계약법 시행령 제21조 제1항 제6호 (지역제한)")
     elif ac.get("sme_restriction"):
         restriction_label = "중소기업자간"
         if not any("판로지원법" in s for s in deterministic_legal_basis):

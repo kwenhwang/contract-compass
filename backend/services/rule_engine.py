@@ -27,10 +27,14 @@ class RuleEngine:
         matched = []
         input_ct = params.get("contract_type", "")
         for rule in self._data.get("rules", []):
-            # 기관유형 필터: 규칙 org_type 지정 시 해당 기관만(미지정=공통)
+            # 기관유형 필터: 규칙 org_type 지정 시 해당 기관만(미지정=공통).
+            # 문자열(단일) 또는 리스트(복수 기관) 허용 — 2026-07-30 R8: 국가 소액수의
+            # 기본 룰(SVC_002·PRD_005)이 지자체 판정에 국가 근거로 혼입되던 결함 수리.
             rule_org = rule.get("org_type")
-            if rule_org and rule_org != org_type:
-                continue
+            if rule_org:
+                allowed = rule_org if isinstance(rule_org, list) else [rule_org]
+                if org_type not in allowed:
+                    continue
             # 계약유형이 다른 규칙은 제외 (public_procurement는 모든 유형에 적용 가능)
             rule_ct = rule.get("contract_type", "")
             if rule_ct != "public_procurement" and input_ct and rule_ct != input_ct:
@@ -186,6 +190,13 @@ class RuleEngine:
         해당 항목에 확인 안내를 덧붙인다(미확인 값 단정 금지 원칙)."""
         local_note = (" ※ 지방자치단체는 지방계약법령 기준(한도·절차)이 다를 수 있으니 "
                       "소속 지자체 계약 부서 기준을 확인하세요." if org_type == "local" else "")
+        # 2026-07-30 R8: 지자체 요청에 국가 시행령 제21조가 그대로 인용되던 혼재 수리 —
+        # 지자체 제한입찰 근거는 지방계약법 시행령 제20조(호 단위는 검증 전이라 조 단위 인용).
+        _is_local = org_type == "local"
+        perf_basis = ("지방계약법 시행령 제20조(제한입찰)" if _is_local
+                      else "국가계약법 시행령 제21조 제1항 제1호")
+        region_basis_generic = ("지방계약법 시행령 제20조(제한입찰)" if _is_local
+                                else "국가계약법 시행령 제21조 제1항 제6호")
         th = self.thresholds
         notice = th.get("announcement_limit", 230_000_000)        # 고시금액 2.3억
         small = th.get("sme_small_enterprise_upper", 100_000_000)  # 1억
@@ -203,8 +214,11 @@ class RuleEngine:
             kind = "종합공사" if is_general else "전문공사"
             region_limit = 15_000_000_000 if is_general else 1_000_000_000   # 150억 / 10억
             perf_limit = 3_000_000_000 if is_general else 300_000_000        # 30억 / 3억
-            region_basis = ("공기업·준정부기관 계약사무규칙 제6조 제4항 (150억원 미만 건설공사)"
-                            if is_general else "국가계약법 시행령 제21조 제1항 제6호")
+            if _is_local:
+                region_basis = "지방계약법 시행규칙 제24조(제한입찰의 제한기준)"
+            else:
+                region_basis = ("공기업·준정부기관 계약사무규칙 제6조 제4항 (150억원 미만 건설공사)"
+                                if is_general else "국가계약법 시행령 제21조 제1항 제6호")
             # [선택] 지역제한 — 종합 150억·전문 10억 미만. 법령상 선택 사항이나
             # 기관 내규로 의무화한 곳이 많아 내규 확인 안내를 덧붙인다.
             if price < region_limit:
@@ -222,7 +236,7 @@ class RuleEngine:
                     "performance_restriction",
                     f"시공 실적 보유 업체로 제한하시겠습니까? [선택]",
                     f"추정가격 {perf_limit // 100_000_000}억원 이상 {kind}는 실적제한 가능. "
-                    f"근거: 국가계약법 시행령 제21조 제1항 제1호{local_note}",
+                    f"근거: {perf_basis}{local_note}",
                     "실적제한 경쟁입찰이 적용됩니다.",
                 ))
                 # F20-C2 (2026-06-10): 공사 시공능력 제한 (사용자 의견 — 실적제한과 별개 옵션)
@@ -230,7 +244,9 @@ class RuleEngine:
                     "construction_capability_restriction",
                     f"시공능력평가액으로 제한하시겠습니까? [선택]",
                     f"직전 사업년도 시공능력평가액(추정가의 1배 이상)을 기준으로 입찰참가 제한. "
-                    f"실적제한과 다른 제한 방식 — 국가계약법 시행령 제21조(제한경쟁입찰) 참조. 자유 텍스트 입력 가능.",
+                    f"실적제한과 다른 제한 방식 — "
+                    f"{'지방계약법 시행령 제20조(제한입찰)' if _is_local else '국가계약법 시행령 제21조(제한경쟁입찰)'} "
+                    f"참조. 자유 텍스트 입력 가능.",
                     "시공능력 제한이 적용됩니다 (자격요건에 명시 — 추천 문구 3종 선택 가능).",
                 ))
         else:
@@ -256,14 +272,14 @@ class RuleEngine:
                 opts.append(q(
                     "performance_restriction",
                     "실적 보유 업체로 제한하시겠습니까? [선택]",
-                    f"추정가격 고시금액(2.3억원) 이상 {kind}은 실적제한 가능. 근거: 국가계약법 시행령 제21조 제1항 제1호",
+                    f"추정가격 고시금액(2.3억원) 이상 {kind}은 실적제한 가능. 근거: {perf_basis}{local_note}",
                     "실적제한 경쟁입찰이 적용됩니다.",
                 ))
             else:
                 opts.append(q(
                     "regional_restriction",
                     "우리 지역(시·도) 업체로 제한하시겠습니까? [선택]",
-                    f"추정가격 고시금액(2.3억원) 미만 {kind}은 지역제한 가능. 근거: 국가계약법 시행령 제21조 제1항 제6호",
+                    f"추정가격 고시금액(2.3억원) 미만 {kind}은 지역제한 가능. 근거: {region_basis_generic}{local_note}",
                     "지역제한 경쟁입찰로 전환됩니다.",
                 ))
         # 2026-06-05 F9-3 / 2026-06-09 F13-2: 공동도급 4가지 세부 옵션 + 법령 클릭

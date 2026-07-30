@@ -488,8 +488,7 @@
       "expect_rule_id": "LOCAL_SVC_NEGO",
       "expect_method": "소액수의계약",
       "expect_top3": [
-        "LOCAL_SVC_NEGO",
-        "SVC_002"
+        "LOCAL_SVC_NEGO"
       ]
     },
     {
@@ -502,8 +501,7 @@
       "expect_rule_id": "LOCAL_SVC_COMP",
       "expect_method": "일반경쟁입찰",
       "expect_top3": [
-        "LOCAL_SVC_COMP",
-        "SVC_002"
+        "LOCAL_SVC_COMP"
       ]
     },
     {
@@ -547,8 +545,7 @@
       "expect_rule_id": "LOCAL_PRD_COMP",
       "expect_method": "일반경쟁입찰",
       "expect_top3": [
-        "LOCAL_PRD_COMP",
-        "PRD_005"
+        "LOCAL_PRD_COMP"
       ]
     },
     {

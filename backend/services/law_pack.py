@@ -14,12 +14,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from backend.services.thresholds import (
-    ANNOUNCEMENT_LIMIT,
-    SME_SMALL_ENTERPRISE_UPPER,
-    INTERNATIONAL_BID_PRODUCT,
-)
-
 _RULES_DIR = Path(__file__).resolve().parent.parent.parent / "rules"
 
 # Load once at module import (즉시 결정론적, 매 호출에 디스크 IO 없음)
@@ -75,11 +69,14 @@ def _key_in(text: str, key: str) -> bool:
     return False
 
 
-def resolve_registry_keys(legal_basis: list[str] | None, method: str) -> list[str]:
+def resolve_registry_keys(legal_basis: list[str] | None, method: str,
+                          *, include_method_defaults: bool = True) -> list[str]:
     """룰의 legal_basis 문자열들 + method → law_registry 키 목록.
 
     basis 문자열마다 가장 긴 포함 키 1개만 취하고(한 인용은 한 조문),
     method는 정확 일치 → 괄호 앞 base 일치 → base 접두 일치 순으로 푼다.
+    include_method_defaults=False면 method별 기본 법령 키를 얹지 않는다 —
+    기본 키가 국가계약법 기준이라 지자체(LOCAL_*) 룰에 혼입되던 결함 방지(2026-07-30 R8).
     """
     out: list[str] = []
 
@@ -92,6 +89,8 @@ def resolve_registry_keys(legal_basis: list[str] | None, method: str) -> list[st
             if _key_in(b, k):
                 _add(k)
                 break
+    if not include_method_defaults:
+        return out
     base = method.split("(")[0].strip()
     for m in (method, base):
         if m in _METHOD_LAW:
@@ -176,7 +175,9 @@ def build_decision_pack(
     # 1. 매칭된 룰의 적용 법령 (legal_basis + 방법별 default 법령)
     #    조문 본문은 registry 키로 해석해 붙이고, 사람용 근거 문구는 원문 인용 유지
     method = (rule.get("result", {}) or {}).get("method", "")
-    law_keys = resolve_registry_keys(rule.get("legal_basis"), method)
+    _is_local = rule.get("org_type") == "local"
+    law_keys = resolve_registry_keys(rule.get("legal_basis"), method,
+                                     include_method_defaults=not _is_local)
     laws_applied = [t for t in (_law_text(k) for k in law_keys) if t]
 
     # 2. 룰엔진 자연어 설명 — 금액·계약유형 외에 매칭된 모든 조건
@@ -188,8 +189,12 @@ def build_decision_pack(
         _eok = estimated_price / 100_000_000
         price_text = f"{_eok:g}억원" if _eok != int(_eok) else f"{int(_eok)}억원"
     elif estimated_price >= 10_000_000:
-        _man = estimated_price / 10_000
-        price_text = f"{_man:,.0f}만원"
+        # 2026-07-30 R8: 20,000,001원이 "2,000만원"으로 반올림돼 경계값 초과 사실이
+        # 가려지던 결함 정정 — 만원 단위로 떨어지지 않으면 원 단위 전액 표기.
+        if estimated_price % 10_000:
+            price_text = f"{estimated_price:,}원"
+        else:
+            price_text = f"{estimated_price // 10_000:,}만원"
     else:
         price_text = f"{estimated_price:,}원"
     # 매칭된 조건 자연어로 — rule.conditions + additional_conditions 모두 반영
@@ -238,22 +243,32 @@ def build_decision_pack(
     _basis_texts = (rule.get("legal_basis") or [])[:2] or law_keys[:2]
     law_text = f"근거: {', '.join(_basis_texts)}" if _basis_texts else ""
 
-    # "왜 이 방법인가" 의미적 이유 — 임계값 비교 + 핵심 법령 키워드로 추론 근거 1줄
+    # "왜 이 방법인가" — 매칭된 룰 자신의 금액 조건에서 도출 (2026-07-30 R8).
+    # 종전에는 룰과 무관한 국가 기준 금액대 일반론을 붙여 "일반경쟁입찰 적용인데
+    # 왜? 소액수의 가능"류 자기모순·기관유형 불일치가 났다. 룰 조건→설명이면
+    # 모순이 구조적으로 불가능하다.
+    def _fmt_won(v: int) -> str:
+        if v >= 100_000_000:
+            _e = v / 100_000_000
+            return f"{_e:g}억원"
+        if v >= 10_000_000 and v % 10_000_000 == 0:
+            return f"{v // 10_000_000}천만원"
+        if v % 10_000 == 0:
+            return f"{v // 10_000:,}만원"
+        return f"{v:,}원"
+
     rationale: list[str] = []
-    if estimated_price < 20_000_000:
-        rationale.append("2천만원 미만 → 소액수의(전자조달 의무)")
-    elif estimated_price < 50_000_000:
-        rationale.append("5천만원 미만 → 소액수의 가능")
-    elif contract_type in ("service", "product") and estimated_price < SME_SMALL_ENTERPRISE_UPPER:
-        rationale.append("1억원 미만 용역/물품 → 소기업·소상공인 제한 검토")
-    elif contract_type in ("service", "product") and estimated_price < ANNOUNCEMENT_LIMIT:
-        rationale.append("2.3억원 미만 → 중소기업자간 경쟁 원칙 (판로지원법)")
-    elif contract_type in ("service", "product") and estimated_price >= INTERNATIONAL_BID_PRODUCT:
-        rationale.append("국제입찰 고시금액 이상 → 국제입찰 대상 (WTO-GPA, 기재부 고시)")
-    elif contract_type == "construction" and estimated_price >= 10_000_000_000:
-        rationale.append("100억 이상 공사 → 종합심사낙찰제 (시행령 제42조 제4항)")
-    elif contract_type == "construction" and estimated_price >= 26_500_000_000:
-        rationale.append("265억 이상 공사 → 국제입찰 + 종합심사 의무")
+    _gte = rule_conds.get("estimated_price_gte")
+    _lte = rule_conds.get("estimated_price_lte")
+    _lt = rule_conds.get("estimated_price_lt")
+    if _gte and (_lte or _lt):
+        _hi, _hi_word = (_lte, "이하") if _lte else (_lt, "미만")
+        rationale.append(f"추정가격 {_fmt_won(_gte)} 이상 {_fmt_won(_hi)} {_hi_word} 구간")
+    elif _gte:
+        rationale.append(f"추정가격 {_fmt_won(_gte)} 이상")
+    elif _lte or _lt:
+        _hi, _hi_word = (_lte, "이하") if _lte else (_lt, "미만")
+        rationale.append(f"추정가격 {_fmt_won(_hi)} {_hi_word}")
     # 적격심사 별표 인용 (룰에 별표 정보가 있으면)
     pass_info = (rule.get("result", {}) or {}).get("pass_score_by_amount") or {}
     if pass_info:
