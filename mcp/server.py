@@ -452,10 +452,12 @@ _PRICING_HTML = """<!doctype html><html lang="ko"><meta charset="utf-8">
 <tr><td>체험 키</td><td>키당 2,000콜</td><td>동일</td><td>7일 1,000원</td></tr>
 <tr><td>PRO 키</td><td>키당 2,000콜</td><td>동일 + 우선 지원</td><td>30일 9,900원 · 90일 24,900원</td></tr>
 </table>
-<p><b>카드결제</b>(법인·개인·정부구매카드, Visa/Master) — 결제 즉시 라이선스 키가
-이메일로 자동 발송되고 영수증(인보이스)도 함께 발행됩니다. 자동결제(구독) 없음 —
-기간 만료 시 무료 티어로 자연 복귀합니다. 기관 구매·세금계산서 등 별도 서류가
-필요하면 <b>contract@sallim.app</b>으로 문의해 주세요.</p>
+<p><b>카드결제</b> — <b>해외결제 가능한 카드</b>(Visa/Mastercard 등 국제 브랜드)면
+개인·법인·정부구매카드 구분 없이 결제됩니다. 결제 즉시 라이선스 키가 이메일로 자동
+발송되고 영수증(인보이스)도 함께 발행됩니다. 자동결제(구독) 없음 — 기간 만료 시 무료
+티어로 자연 복귀합니다. 결제가 거절되면 해외(온라인)결제 차단 여부를 카드사에 확인해
+주세요. 기관 구매·세금계산서 등 별도 서류가 필요하면 <b>contract@sallim.app</b>으로
+문의해 주세요.</p>
 <h2>연결 방법</h2>
 <pre style="background:#f4f4f5;padding:12px;border-radius:8px;overflow-x:auto">
 # Claude Code
