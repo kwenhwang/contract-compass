@@ -98,8 +98,11 @@ def check_snapshots(oc: str, sleep: float = 0.4) -> list[dict]:
             continue
         row |= {"cur_ef": cur.ef_date, "cur_no": cur.promul_no, "cur_mst": cur.mst,
                 "cur_revision": cur.revision}
+        # 시행일자 단독 불일치는 공포번호가 같고 로컬이 더 미래면 STALE 아님 —
+        # 분리시행 법령(2026-07 국유재산법: 검색 API 시행 20260219, 본문 XML 헤더는
+        # 후행 시행분 20260820)은 같은 문서를 재취득해도 영원히 불일치한다.
         stale = (norm_no(local.promul_no) != norm_no(cur.promul_no)
-                 or local.ef_date != cur.ef_date)
+                 or (local.ef_date != cur.ef_date and local.ef_date < cur.ef_date))
         row["status"] = "STALE" if stale else "OK"
         if stale:
             row["detail"] = (f"로컬 제{norm_no(local.promul_no)}호(시행 {local.ef_date}) → "

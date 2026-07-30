@@ -63,6 +63,11 @@ def parse_law_xml(xml_path: Path) -> list[dict]:
 
     # 조문별 1:1 청크 (정확한 조문 번호 검색 보장)
     for art in articles:
+        # 장·절 표제 노드(조문여부="전문")는 해당 장 첫 조문의 조문번호를 달고 있어
+        # 실조문을 가리는 스텁 청크가 된다(2026-07-30 보조금법 제30조가 '제5장 …'
+        # 표제로 회수되던 결함 — 25개 법령 300건 실측). 실조문만 색인한다.
+        if (art.findtext("조문여부") or "조문") != "조문":
+            continue
         art_num  = art.findtext("조문번호") or ""
         art_sub  = art.findtext("조문가지번호") or ""
         art_cont = art.findtext("조문내용") or ""
@@ -167,6 +172,10 @@ def main():
         print(f"파싱: {xml_path.name} ...", end=" ", flush=True)
         chunks = parse_law_xml(xml_path)
         print(f"{len(chunks)}개 청크")
+        # chunk_id의 순번이 파일 내 전역 인덱스라 파서 변경으로 순번이 밀리면 구
+        # 청크가 잔재로 남는다 — 같은 법령의 기존 청크를 지우고 다시 넣는다(멱등).
+        if chunks and not args.reset:
+            collection.delete(where={"law_name": chunks[0]["law_name"]})
 
         for i, c in enumerate(chunks):
             safe_id = re.sub(r"[^a-zA-Z0-9가-힣_-]", "_", c["law_ref"])

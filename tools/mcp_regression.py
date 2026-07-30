@@ -101,6 +101,9 @@ CASES = [
      lambda d: (lambda rids: any(r.startswith("LOCAL_CST") for r in rids)
                 and not any(r.startswith("CST_") for r in rids))(
                     [(c.get("rule_id") or "") for c in d.get("candidates", [])])),
+    ("R14-인접법령-하도급60일",    # 인접법령 확장(2026-07-30 12종) 회귀 — 하도급법
+     "get_law_article", {"ref": "하도급법 제13조"},  # 제13조 대금지급 60일이 앵커
+     lambda d: "60일" in d.get("content", "") and d.get("law_name") == "하도급법"),
     ("R13-전기공사-지방룰",        # 전기·정보통신은 LOCAL 룰 부재로 국가룰(CST_ELEC_*)
      "decide_contract_method",     # 폴백이었음 — LOCAL_CST_*_ELEC/ICT 신설(지방령
      {"contract_type": "construction", "estimated_price": 100000000,  # 25조①5호가목

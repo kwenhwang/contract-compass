@@ -114,6 +114,22 @@ LAW_MANIFEST: tuple[LawSpec, ...] = (
     LawSpec("건설산업기본법_시행령.xml", "건설산업기본법 시행령"),
     LawSpec("국가재정법.xml", "국가재정법"),
     LawSpec("지방재정법.xml", "지방재정법"),
+    # 인접법령 확장(2026-07-30 계약 집중 결정): 같은 구매자(공공계약 실무자·조달기업)의
+    # 빈출 인접 주제 — 하도급 대금·직불, 사용허가·대부, 보조금 집행. 시행규칙은
+    # 하도급법·공유재산법·보조금법에 존재하지 않음(law.go.kr 정확일치 실측).
+    LawSpec("하도급거래_공정화에_관한_법률.xml", "하도급거래 공정화에 관한 법률"),
+    LawSpec("하도급거래_공정화에_관한_법률_시행령.xml", "하도급거래 공정화에 관한 법률 시행령"),
+    LawSpec("건설산업기본법_시행규칙.xml", "건설산업기본법 시행규칙"),
+    LawSpec("국유재산법.xml", "국유재산법"),
+    LawSpec("국유재산법_시행령.xml", "국유재산법 시행령"),
+    LawSpec("국유재산법_시행규칙.xml", "국유재산법 시행규칙"),
+    LawSpec("공유재산_및_물품_관리법.xml", "공유재산 및 물품 관리법",
+            note="물품관리법과 혼동 주의 — 별개 법령(지자체 재산·물품)"),
+    LawSpec("공유재산_및_물품_관리법_시행령.xml", "공유재산 및 물품 관리법 시행령"),
+    LawSpec("보조금_관리에_관한_법률.xml", "보조금 관리에 관한 법률"),
+    LawSpec("보조금_관리에_관한_법률_시행령.xml", "보조금 관리에 관한 법률 시행령"),
+    LawSpec("지방자치단체_보조금_관리에_관한_법률.xml", "지방자치단체 보조금 관리에 관한 법률"),
+    LawSpec("지방자치단체_보조금_관리에_관한_법률_시행령.xml", "지방자치단체 보조금 관리에 관한 법률 시행령"),
 )
 
 # 감시·취득 대상이 아닌 수동 반입 파일(전문 hwpx 등)
@@ -162,12 +178,20 @@ def find_exact(name: str, oc: str, target: str = "law", timeout: int = 15) -> La
     """법령명이 **정확히 일치**하는 현행 법령만 반환. 없으면 None.
 
     폴백 금지 — 이 함수의 존재 이유다(모듈 docstring 참조).
+
+    동명 연혁이 여러 건이면 **오늘 기준 시행 중**(시행일자 ≤ 오늘)인 것 중 최신을
+    고른다 — 첫 결과가 미시행 예정분일 수 있다(2026-07-30 국유재산법: 시행
+    20260820 예정분이 1순위로 와 STALE 오취득). 전부 미시행이면 첫 일치 반환.
     """
+    from datetime import date
+    today = date.today().strftime("%Y%m%d")
     want = norm_name(name)
-    for e in search(name, oc, target=target, timeout=timeout):
-        if norm_name(e.name) == want:
-            return e
-    return None
+    hits = [e for e in search(name, oc, target=target, timeout=timeout)
+            if norm_name(e.name) == want]
+    if not hits:
+        return None
+    current = [e for e in hits if e.ef_date and e.ef_date <= today]
+    return max(current, key=lambda e: e.ef_date) if current else hits[0]
 
 
 def fetch_xml(mst: str, oc: str, target: str = "law", timeout: int = 30) -> bytes:
