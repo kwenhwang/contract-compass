@@ -19,7 +19,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from mcp import types as mcp_types
@@ -31,9 +31,16 @@ from auth import PRICING_URL, DailyQuota, resolve_access  # noqa: E402 — mcp/ 
 BASE_URL = os.environ.get("CONTRACT_COMPASS_URL", "http://127.0.0.1:8402").rstrip("/")
 API = f"{BASE_URL}/api/v1"
 _TIMEOUT = httpx.Timeout(60.0, connect=10.0)
+# 모듈 전역 클라이언트 1개 — 호출마다 생성하면 커넥션 풀 재사용이 안 된다(mcp-tool-design §3).
+# sync 도구는 SDK가 anyio.to_thread로 돌리므로(resolve.py:556 실측) thread-safe Client면 충분.
+_http = httpx.Client(timeout=_TIMEOUT)
 _ROOT = Path(__file__).resolve().parents[1]
 _quota = DailyQuota(_ROOT / "logs" / "mcp_quota.json")
 _CALL_LOG = _ROOT / "logs" / "mcp_calls.jsonl"
+# 직전 호출 링버퍼 — report_issue가 자동 첨부(모델이 적는 도구명은 기억이라 틀린다,
+# mcp-tool-design §2). 전역 공유라 동시 사용자 트래픽이 붙으면 섞일 수 있음(저트래픽 전제).
+from collections import deque as _deque
+RECENT_CALLS: "_deque[dict]" = _deque(maxlen=20)
 
 
 def _denied_result(payload: dict) -> mcp_types.CallToolResult:
@@ -71,13 +78,19 @@ class QuotaGate:
         t0 = time.time()
         result = await call_next(ctx)
         try:
+            args = (ctx.params or {}).get("arguments") or {}
+            sc = getattr(result, "structured_content", None)
+            entry = {
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "tool": tool,
+                "tier": access.tier, "subject": access.subject,
+                "args": _json.dumps(args, ensure_ascii=False)[:300],
+                "error": (sc or {}).get("error") if isinstance(sc, dict) else None,
+                "dur_ms": round((time.time() - t0) * 1000),
+            }
+            RECENT_CALLS.append(entry)
             _CALL_LOG.parent.mkdir(parents=True, exist_ok=True)
             with _CALL_LOG.open("a", encoding="utf-8") as f:
-                f.write(_json.dumps({
-                    "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "tool": tool,
-                    "tier": access.tier, "subject": access.subject,
-                    "dur_ms": round((time.time() - t0) * 1000),
-                }, ensure_ascii=False) + "\n")
+                f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
         except Exception:  # noqa: BLE001 — 계측 실패가 호출을 막지 않는다
             pass
         return result
@@ -147,20 +160,18 @@ def _friendly_error(exc: Exception) -> dict:
 
 def _get(path: str, params: dict[str, Any] | None = None) -> Any:
     try:
-        with httpx.Client(timeout=_TIMEOUT) as c:
-            r = c.get(f"{API}{path}", params=params)
-            r.raise_for_status()
-            return r.json()
+        r = _http.get(f"{API}{path}", params=params)
+        r.raise_for_status()
+        return r.json()
     except httpx.HTTPError as exc:
         return _friendly_error(exc)
 
 
 def _post(path: str, body: dict[str, Any], headers: dict[str, str] | None = None) -> Any:
     try:
-        with httpx.Client(timeout=_TIMEOUT) as c:
-            r = c.post(f"{API}{path}", json=body, headers=headers)
-            r.raise_for_status()
-            return r.json()
+        r = _http.post(f"{API}{path}", json=body, headers=headers)
+        r.raise_for_status()
+        return r.json()
     except httpx.HTTPError as exc:
         return _friendly_error(exc)
 
@@ -171,10 +182,10 @@ def _is_error(d: Any) -> bool:
 
 @server.tool(annotations=READ_ONLY)
 def decide_contract_method(
-    contract_type: str,
+    contract_type: Literal["construction", "service", "product"],
     estimated_price: int,
-    org_type: str = "public_corp",
-    service_type: str | None = None,
+    org_type: Literal["national", "local", "public_corp"] = "public_corp",
+    service_type: Literal["technical", "academic", "facility", "it_service", "other"] | None = None,
     construction_specialty: str | None = None,
     is_sme_competition_product: bool = False,
     negotiation_reason: str | None = None,
@@ -250,6 +261,7 @@ def search_law(query: str, top_k: int = 8) -> dict:
     hits = _get("/law/search", {"q": query})
     if _is_error(hits):
         return hits
+    total_found = len(hits)
     out = []
     for h in hits[: max(1, min(top_k, 20))]:
         h = dict(h)
@@ -257,7 +269,9 @@ def search_law(query: str, top_k: int = 8) -> dict:
             if isinstance(h.get(k), str) and len(h[k]) > 400:
                 h[k] = h[k][:400] + "…"
         out.append(h)
-    result: dict[str, Any] = {"hits": out, "count": len(out)}
+    result: dict[str, Any] = {"hits": out, "count": len(out), "total_found": total_found}
+    if total_found > len(out):
+        result["note"] = f"총 {total_found}건 중 상위 {len(out)}건만 표시 — 더 필요하면 top_k를 올려라"
     if not out:
         # 0건은 오류가 아니라 재질의 신호 — 에이전트가 "실패"로 오독하고 자체 지식으로
         # 빠지지 않게 다음 행동을 명시한다(2026-07-30, 복합 쿼리 0건 6/12 실측).
@@ -288,7 +302,7 @@ def search_references(query: str, top_k: int = 6) -> dict:
 
 
 @server.tool(annotations=READ_ONLY)
-def search_cases(query: str, top_k: int = 5, kind: str = "all") -> dict:
+def search_cases(query: str, top_k: int = 5, kind: Literal["prec", "expc", "all"] = "all") -> dict:
     """판례·법령해석례 검색 — law.go.kr 실시간 조회(항상 현행). LLM 미사용.
 
     분쟁·처분취소·해석 다툼("~해도 되나", "~취소될 수 있나")에 조문만으로 부족할 때
@@ -309,7 +323,7 @@ def search_cases(query: str, top_k: int = 5, kind: str = "all") -> dict:
 
 
 @server.tool(annotations=READ_ONLY)
-def get_case(kind: str, case_id: str) -> dict:
+def get_case(kind: Literal["prec", "expc"], case_id: str) -> dict:
     """판례/해석례 본문 조회 — 판시사항·판결요지·참조조문(판례) 또는 질의요지·회답·이유(해석례).
 
     Args:
@@ -336,7 +350,8 @@ def get_law_article(ref: str) -> dict:
 
 @server.tool(annotations=WRITE_FEEDBACK)
 def report_issue(
-    category: str,
+    category: Literal["wrong_citation", "outdated_law", "wrong_ruling",
+                      "tool_error", "feature_request", "other"],
     message: str,
     related_tool: str | None = None,
     related_query: str | None = None,
@@ -344,8 +359,9 @@ def report_issue(
 ) -> dict:
     """오류·개선 제보 — 운영자에게 전달된다(웹 피드백과 같은 검토 파이프라인).
 
-    도구 결과가 명백히 틀렸거나(조문·수치·판례 불일치), 사용자가 오류를 지적하거나,
-    필요한 기능이 없을 때 사용하라. 제보 전 사용자에게 보낼 내용을 알리는 것을 권장.
+    사용자가 "틀렸다"고 지적하면 **먼저 이 도구로 제보한 뒤** 정정 답을 제시하라.
+    도구 결과가 조문·수치·판례와 명백히 불일치할 때도 제보하라. 추측으로 부르지 말 것.
+    서버가 직전 도구 호출 기록을 자동 첨부하므로 도구명·인자를 기억으로 적을 필요 없다.
 
     Args:
         category: "wrong_citation"(오인용) | "outdated_law"(개정 미반영) |
@@ -368,6 +384,11 @@ def report_issue(
     if expected:
         comment += f"\n기대값: {expected[:500]}"
     import uuid as _uuid
+    # 직전 호출 자동 첨부 — 모델 기억 대신 서버 기록(전역 링버퍼, 저트래픽 전제)
+    recent = [f"{c['ts']} {c['tool']}({c['args'][:120]})" + (f" ERR={c['error']}" if c.get("error") else "")
+              for c in list(RECENT_CALLS)[-6:-1]]  # 마지막(=이 제보 자신) 제외 5건
+    if recent:
+        comment += "\n[직전 호출(서버 기록)]\n" + "\n".join(recent)
     body = {
         "session_id": f"mcp-{_uuid.uuid4().hex[:12]}",
         "rating": "3" if category == "feature_request" else "1",
@@ -383,20 +404,33 @@ def report_issue(
     except httpx.HTTPError as exc:
         return _friendly_error(exc)
     return {"ok": True,
-            "message": "제보가 접수됐습니다. 운영자가 검토 후 반영하며, 처리 현황은 "
-                       "웹 의견 파이프라인에서 관리됩니다. 감사합니다."}
+            "message": "제보가 접수됐습니다. 운영자가 검토 후 반영합니다.",
+            "note": "사용자에게 '운영자에게 전달됐다'고 알리고, 가능한 범위의 "
+                    "정정 답변(다른 도구로 교차확인한 근거)을 함께 제시하라."}
 
 
 async def _health(request):  # noqa: ANN001 — Starlette Request
-    """앱+백엔드 도달을 한 번에 판정한다(Kuma·배포 게이트 규약)."""
+    """앱+백엔드 도달 + 데이터 신선도를 한 번에 판정한다(Kuma·배포 게이트 규약).
+
+    data_as_of = 코퍼스(chroma_db) 마지막 인덱싱 시각 — 서버가 살아 있어도
+    코퍼스가 낡았으면 쓸모가 다르다(mcp-tool-design §6)."""
     from starlette.responses import JSONResponse
     try:
         with httpx.Client(timeout=httpx.Timeout(5.0)) as c:
             backend = c.get(f"{BASE_URL}/ready").status_code
     except httpx.HTTPError:
         backend = 0
+    data_as_of = None
+    try:
+        mtimes = [f.stat().st_mtime for f in (_ROOT / "chroma_db").glob("**/*.bin")]
+        if not mtimes:
+            mtimes = [(_ROOT / "chroma_db").stat().st_mtime]
+        data_as_of = time.strftime("%Y-%m-%d", time.gmtime(max(mtimes)))
+    except OSError:
+        pass
     ok = backend == 200
-    return JSONResponse({"status": "ok" if ok else "degraded", "backend_ready": backend},
+    return JSONResponse({"status": "ok" if ok else "degraded", "backend_ready": backend,
+                         "data_as_of": data_as_of},
                         status_code=200 if ok else 503)
 
 
