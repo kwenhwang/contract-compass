@@ -4,9 +4,9 @@
 > returns deterministic rulings and verifiable legal source text; reasoning and answer
 > composition belong to the client agent.
 
-- 원격(Streamable HTTP): `https://contract.naru.build/mcp` · 헬스: `/mcp/health`
+- 원격(Streamable HTTP): `https://contract.sallim.app/mcp` (별칭 `contract.naru.build/mcp`) · 헬스: `/mcp/health`
 - 로컬(stdio): `python3 mcp/server.py`
-- 무료: IP당 50콜/일(전 도구) · 유료 키(`cc_live_*`): 한도 상향 — [요금](https://contract.naru.build/mcp/pricing)
+- 무료: IP당 50콜/일(전 도구) · 유료 키(`cc_live_*`): 한도 상향 — [요금](https://contract.sallim.app/mcp/pricing)
 - 인증: `Authorization: Bearer cc_live_...` 헤더 또는 `?key=` 쿼리(ChatGPT 커넥터용)
 
 ## 설계 원칙

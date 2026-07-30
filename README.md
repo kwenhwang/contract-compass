@@ -5,7 +5,7 @@
 > searchable corpus of Korean procurement statutes/regulations/adjudication tables,
 > and live court precedents & authoritative interpretations from law.go.kr.
 > All MCP tools are **LLM-free**: your AI client does the reasoning, this server
-> provides verifiable legal grounds. Remote endpoint: `https://contract.naru.build/mcp`
+> provides verifiable legal grounds. Remote endpoint: `https://contract.sallim.app/mcp` (alias: `contract.naru.build/mcp`)
 
 **공공계약 방법 결정 도우미** — 국가계약법·지방계약법 등 공공계약 법령을 기반으로,
 발주하려는 계약(공사·용역·물품)에 적용 가능한 계약방법(입찰·수의계약·제한경쟁 등)과
@@ -27,8 +27,8 @@
 
 ## MCP 서버 사용하기
 
-원격 엔드포인트(Streamable HTTP): **`https://contract.naru.build/mcp`**
-무료: IP당 50콜/일 (전 도구) · 유료 키: 한도 상향 — [요금 안내](https://contract.naru.build/mcp/pricing)
+원격 엔드포인트(Streamable HTTP): **`https://contract.sallim.app/mcp`** (별칭: `https://contract.naru.build/mcp` — 기존 등록 계속 동작)
+무료: IP당 50콜/일 (전 도구) · 유료 키: 한도 상향 — [요금 안내](https://contract.sallim.app/mcp/pricing)
 
 | 도구 | 설명 | LLM |
 |---|---|---|
@@ -43,18 +43,18 @@
 
 ```bash
 # Claude Code
-claude mcp add --transport http contract-compass https://contract.naru.build/mcp
+claude mcp add --transport http contract-compass https://contract.sallim.app/mcp
 ```
 
 ```json
 // Cursor (.cursor/mcp.json) — Streamable HTTP 직접 지원
-{ "mcpServers": { "contract-compass": { "url": "https://contract.naru.build/mcp" } } }
+{ "mcpServers": { "contract-compass": { "url": "https://contract.sallim.app/mcp" } } }
 ```
 
 ```json
 // Claude Desktop (claude_desktop_config.json) — mcp-remote 경유
 { "mcpServers": { "contract-compass": {
-    "command": "npx", "args": ["-y", "mcp-remote", "https://contract.naru.build/mcp"] } } }
+    "command": "npx", "args": ["-y", "mcp-remote", "https://contract.sallim.app/mcp"] } } }
 ```
 
 ChatGPT: Settings → Connectors → Developer mode에서 위 URL을 커넥터로 추가.

@@ -25,7 +25,7 @@ FREE_DAILY = int(os.environ.get("CONTRACT_MCP_FREE_DAILY", "50"))
 PAID_DAILY_DEFAULT = int(os.environ.get("CONTRACT_MCP_PAID_DAILY", "2000"))
 
 # 구매·갱신 안내의 단일 진실원 — 한도·키 거부 메시지가 이 주소를 가리킨다.
-PRICING_URL = os.environ.get("CONTRACT_MCP_PRICING_URL", "https://contract.naru.build/mcp/pricing")
+PRICING_URL = os.environ.get("CONTRACT_MCP_PRICING_URL", "https://contract.sallim.app/mcp/pricing")
 
 # 루프백 = 운영자 로컬·야간 QA·codexw 하네스. 무료 쿼터를 태우면 회귀가 스스로
 # 막히므로 무제한. 외부 트래픽은 전부 nginx 경유라 x-real-ip가 실IP로 덮인다.

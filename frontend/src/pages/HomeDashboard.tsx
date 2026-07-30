@@ -97,7 +97,7 @@ export default function HomeDashboard({ onDecision, onAsk, onGlossary }: {
             </p>
             <p style={{ fontSize: 13 }}>
               <code style={{ background: 'var(--bg-2, #f4f4f5)', padding: '2px 6px', borderRadius: 4 }}>
-                https://contract.naru.build/mcp
+                https://contract.sallim.app/mcp
               </code>
               {' '}· 무료 50콜/일 ·{' '}
               <a href="https://github.com/kwenhwang/contract-compass/blob/master/docs/MCP.md" target="_blank" rel="noreferrer">도구 명세</a>

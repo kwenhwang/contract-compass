@@ -21,7 +21,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 KEYS_PATH = Path(__file__).resolve().parents[1] / "data" / "mcp_keys.json"
-MCP_URL = "https://contract.naru.build/mcp"
+MCP_URL = "https://contract.sallim.app/mcp"
 
 
 def _load(f) -> dict:

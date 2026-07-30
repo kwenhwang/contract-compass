@@ -1,7 +1,7 @@
 """계약나침반 MCP 서버 — 계약방법 결정·법령/코퍼스 검색을 MCP 도구로 노출.
 
 에이전트(Codex·Claude 등)가 stdio(로컬) 또는 Streamable HTTP(원격,
-https://contract.naru.build/mcp)로 붙어 계약나침반 기능을 직접 호출한다.
+https://contract.sallim.app/mcp — 별칭 https://contract.naru.build/mcp)로 붙어 계약나침반 기능을 직접 호출한다.
 대상 인스턴스는 env `CONTRACT_COMPASS_URL`(기본 로컬 백엔드 :8402 — CF 왕복 회피).
 
 설계 원칙(2026-07-30): MCP 도구는 전부 **무LLM** — 클라이언트가 이미 LLM이므로
@@ -87,7 +87,7 @@ READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotent
 
 server = MCPServer(
     name="contract-compass",
-    title="계약나침반",
+    title="AI 계약나침반 (Contract Compass)",
     instructions=(
         "한국 공공계약(국가계약법·지방계약법) 계약방법 결정 도우미. "
         "decide_contract_method로 결정론 룰엔진 판정을, search_law·get_law_article로 "
@@ -362,15 +362,17 @@ _PRICING_HTML = """<!doctype html><html lang="ko"><meta charset="utf-8">
 <tr><td>PRO 키</td><td>키당 2,000콜</td><td>동일 + 우선 지원</td><td>30일 9,900원 · 90일 24,900원</td></tr>
 </table>
 <p>자동결제 없음 — 기간 만료 시 무료 티어로 자연 복귀합니다. 키는 결제 확인 후 수동
-발급되며(영업일 1일 내), 문의·구매: <a href="https://contract.naru.build">contract.naru.build</a>
+발급되며(영업일 1일 내), 문의·구매: <a href="https://contract.naru.build">계약나침반 웹</a>
 하단 피드백 또는 GitHub 이슈.</p>
 <h2>연결 방법</h2>
 <pre style="background:#f4f4f5;padding:12px;border-radius:8px;overflow-x:auto">
 # Claude Code
-claude mcp add --transport http contract-compass https://contract.naru.build/mcp
+claude mcp add --transport http contract-compass https://contract.sallim.app/mcp
 
 # Cursor (.cursor/mcp.json)
-{ "mcpServers": { "contract-compass": { "url": "https://contract.naru.build/mcp" } } }
+{ "mcpServers": { "contract-compass": { "url": "https://contract.sallim.app/mcp" } } }
+
+# (별칭: https://contract.naru.build/mcp — 기존 등록 사용자용, 계속 동작)
 
 # 유료 키 사용 시 (헤더)
 Authorization: Bearer cc_live_...        # 또는 URL 뒤 ?key=cc_live_... (ChatGPT 커넥터)
