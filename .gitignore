@@ -8,6 +8,7 @@ data/openai_daily_cap_internal.json
 data/rate_limiter.db*
 data/.edge_proxy_key
 data/mcp_keys.json
+data/.mcp_registry_key
 data/feedback_shots/
 data/source_docs/
 tools/laws/*.xml
