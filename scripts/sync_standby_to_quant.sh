@@ -12,3 +12,7 @@ rsync -a --delete \
   --exclude 'data/openai_daily_cap*.json' --exclude 'frontend/node_modules/' \
   "$SRC" "$DST"
 echo "$(date -Is) sync OK" | ssh quant "cat >> /home/ubuntu/standby/contract-compass/.last-sync"
+
+# 임베딩 모델 캐시(HF_HUB_OFFLINE=1이라 캐시 필수 — 2026-07-30 스모크에서 발견).
+# 동일하면 no-op. 모델 교체 시 자동 추종.
+rsync -a "$HOME/.cache/huggingface/hub/" quant:.cache/huggingface/hub/

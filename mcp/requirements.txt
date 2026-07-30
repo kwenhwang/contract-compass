@@ -1,0 +1,5 @@
+# MCP 서버(:8403) 의존성 — 백엔드 requirements와 별도 (naru는 시스템 파이썬에 기설치).
+# 스탠바이 venv 구성 시: pip install -r backend/requirements.txt -r mcp/requirements.txt
+mcp[cli]
+httpx
+PyJWT
