@@ -296,6 +296,16 @@ def search_references(query: str, top_k: int = 6) -> dict:
     if _is_error(hits):
         return hits
     result: dict[str, Any] = {"hits": hits, "count": len(hits)}
+    # 2026-07-30 R9: 순위 근거를 에이전트에게 밝힌다. rerank가 못 돌면(키 미설정·한도 초과)
+    # 순서는 하이브리드 검색(RRF) 그대로이고 relevance 값은 관련도가 아니라 표시용이다 —
+    # 이걸 숨기면 에이전트가 1위 청크를 정답으로 단정한다.
+    if hits and all(h.get("ranked_by") == "hybrid_rrf" for h in hits):
+        result["ranking"] = "hybrid_rrf"
+        result["hint"] = ("재정렬(rerank) 미가동 — 순서는 키워드·의미 혼합 검색 순이고 "
+                          "relevance는 관련도가 아니다. 상위 결과를 정답으로 단정하지 말고 "
+                          "본문을 직접 읽어 판단하라.")
+    elif hits:
+        result["ranking"] = "rerank"
     if not hits:
         result["hint"] = "0건 — 핵심 명사 위주로 짧게 재검색하거나 search_law로 조문을 직접 찾아라."
     return result

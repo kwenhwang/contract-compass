@@ -202,7 +202,24 @@ def search_references(
     # check만 하면 카운트가 안 쌓여 한도가 무력화된다(2026-07-30 실측) — 무LLM이지만
     # 임베딩 비용·외부 API 보호를 위해 요청 자체를 계상한다.
     limiter.record(limiter.check(request, LIMITS_LLM))
-    chunks = rag.search_all(q.strip(), top_k=top_k)
+    # 2026-07-30 R9: MCP 검색 경로에 rerank 미배선이던 결함 수리.
+    # /ask(웹 챗봇)는 _cohere_rerank를 거치지만 이 경로는 RRF 순서를 그대로 냈고,
+    # BM25-only 후보는 relevance_score가 0.6 하드코딩(rag_service.py:889)이라
+    # 순위 신호가 사실상 없었다 — "감사 지적"이 "지적(地籍) 정리"에 매칭돼
+    # 국유재산법 시행규칙 제47조가 1위로 나오던 동음이의 오매칭이 대표 증상.
+    # 후보를 넓게 뽑아 rerank로 좁힌다. rerank 무산출이면 순서는 기존과 동일하되
+    # 그 사실을 응답에 드러낸다(폴백 은폐 금지 — 이 저장소의 기존 원칙).
+    from backend.services import reranker
+    _want = top_k * 2
+    # rerank가 있으면 후보 풀을 넓혀도 비용은 호출 1회로 같다 — 좁은 풀에서는 정답 청크가
+    # 애초에 회수되지 않아 재정렬로도 못 살린다(예: '분할발주 금지'의 시행령 제68조).
+    _pool = 28 if reranker.is_available() else max(top_k, 12)
+    chunks = rag.search_all(q.strip(), top_k=_pool)
+    _reranked = False
+    if chunks and reranker.is_available():
+        ordered = reranker.rerank(q.strip(), chunks, top_n=_want)
+        if any(c.get("_rerank_score") is not None for c in ordered):
+            chunks, _reranked = ordered, True
 
     # excerpt를 청크 앞 600자 고정이 아니라 질의 토큰 첫 매치 주변으로 창을 잡는다 —
     # 별표류 긴 청크(1,200자)는 정답 행이 뒤쪽에 있으면 회수돼도 본문이 안 보였다
@@ -233,10 +250,14 @@ def search_references(
             "section": section,
             "source_type": c.get("source_type") or "",
             "excerpt": _clean_markers(excerpt),
-            "relevance": round(float(c.get("relevance_score") or 0), 3),
+            # rerank 점수가 있으면 그것이 진짜 관련도 — 없으면 RRF 순서만 신뢰 가능하므로
+            # 하드코딩 0.6을 관련도인 양 내보내지 않고 ranked_by로 근거를 밝힌다.
+            "relevance": (round(float(c["_rerank_score"]), 3) if c.get("_rerank_score") is not None
+                          else round(float(c.get("relevance_score") or 0), 3)),
+            "ranked_by": "rerank" if c.get("_rerank_score") is not None else "hybrid_rrf",
         }
 
-    return [_row(c) for c in chunks[: top_k * 2]]
+    return [_row(c) for c in chunks[:_want]]
 
 
 @router.get("/search", response_model=list[LawSearchHit])
