@@ -14,17 +14,73 @@ https://contract.naru.build/mcp)로 붙어 계약나침반 기능을 직접 호�
 """
 from __future__ import annotations
 
+import json as _json
 import os
 import sys
+import time
+from pathlib import Path
 from typing import Any
 
 import httpx
+from mcp import types as mcp_types
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
+
+from auth import PRICING_URL, DailyQuota, resolve_access  # noqa: E402 — mcp/ 로컬 모듈
 
 BASE_URL = os.environ.get("CONTRACT_COMPASS_URL", "http://127.0.0.1:8402").rstrip("/")
 API = f"{BASE_URL}/api/v1"
 _TIMEOUT = httpx.Timeout(60.0, connect=10.0)
+_ROOT = Path(__file__).resolve().parents[1]
+_quota = DailyQuota(_ROOT / "logs" / "mcp_quota.json")
+_CALL_LOG = _ROOT / "logs" / "mcp_calls.jsonl"
+
+
+def _denied_result(payload: dict) -> mcp_types.CallToolResult:
+    """게이트 거부를 도구 결과(dict)로 반환 — 예외가 아니라 데이터.
+
+    에이전트가 message를 그대로 사용자에게 읽어주는 realty-mcp 검증 패턴.
+    isError=False 유지: 오류 채널로 보내면 클라이언트가 재시도만 반복한다(실측)."""
+    return mcp_types.CallToolResult(
+        content=[mcp_types.TextContent(type="text",
+                                       text=_json.dumps(payload, ensure_ascii=False, indent=2))],
+        structured_content=payload,
+    )
+
+
+class QuotaGate:
+    """tools/call 단위 티어 게이트 + JSONL 호출 로그 (ServerMiddleware, 2026-07-30).
+
+    stdio(ctx.request=None)는 local 티어로 무제한 — 야간 QA·codexw 하네스 보호.
+    원격(streamable-http)은 무료 IP당 FREE_DAILY, cc_live_* 키는 키당 한도."""
+
+    async def __call__(self, ctx, call_next):
+        if ctx.method != "tools/call":
+            return await call_next(ctx)
+        tool = (ctx.params or {}).get("name", "?")
+        access = resolve_access(ctx.request)
+        if access.error:
+            return _denied_result(access.error)
+        if access.daily_limit is not None and not _quota.consume(access.subject, access.daily_limit):
+            return _denied_result({
+                "error": "daily_limit_exceeded",
+                "message": f"무료 한도(하루 {access.daily_limit}콜)를 모두 사용했습니다. "
+                           f"내일(UTC 자정) 리셋되며, 더 필요하면 유료 키 안내: {PRICING_URL}",
+                "hint": "이 사실을 사용자에게 알리고 오늘은 추가 조회를 멈춰라.",
+            })
+        t0 = time.time()
+        result = await call_next(ctx)
+        try:
+            _CALL_LOG.parent.mkdir(parents=True, exist_ok=True)
+            with _CALL_LOG.open("a", encoding="utf-8") as f:
+                f.write(_json.dumps({
+                    "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "tool": tool,
+                    "tier": access.tier, "subject": access.subject,
+                    "dur_ms": round((time.time() - t0) * 1000),
+                }, ensure_ascii=False) + "\n")
+        except Exception:  # noqa: BLE001 — 계측 실패가 호출을 막지 않는다
+            pass
+        return result
 
 # 전 도구 읽기전용 — 어노테이션이 없으면 codex(비대화)가 승인 대상으로 보고 자동 취소한다(2026-07-29 실측)
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
@@ -47,8 +103,9 @@ server = MCPServer(
         "자체 지식으로 법령 수치를 단정하지 마라. "
         "답변은 정보 제공용이며 법적 자문이 아니다."
     ),
-    version="1.0.0",
+    version="1.1.0",
 )
+server.middleware.append(QuotaGate())  # tools/call 티어 게이트 + 호출 로그
 
 
 def _friendly_error(exc: Exception) -> dict:
@@ -289,6 +346,49 @@ async def _health(request):  # noqa: ANN001 — Starlette Request
 # 외부는 nginx가 /mcp* 만 이 서버로 넘긴다 — /mcp/health가 외부 감시 경로다.
 for _hp in ("/health", "/mcp/health"):
     server.custom_route(_hp, methods=["GET"], include_in_schema=False)(_health)
+
+
+_PRICING_HTML = """<!doctype html><html lang="ko"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>계약나침반 MCP — 요금 안내</title>
+<body style="font-family:system-ui,sans-serif;max-width:44rem;margin:4rem auto;padding:0 1rem;line-height:1.65">
+<h1>🧭 계약나침반 MCP 요금 안내</h1>
+<p>한국 공공계약 법령·판례 MCP 서버 — 모든 도구는 LLM 없이 검증 가능한 법적 근거만
+반환합니다. 무료로 전 도구를 쓸 수 있고, 유료 키는 <b>한도만</b> 올립니다(기능 차이 없음).</p>
+<table border="1" cellpadding="8" style="border-collapse:collapse;width:100%">
+<tr><th>티어</th><th>일일 한도</th><th>기능</th><th>가격</th></tr>
+<tr><td>무료</td><td>IP당 50콜 (UTC 자정 리셋)</td><td>도구 6종 전부</td><td>0원</td></tr>
+<tr><td>체험 키</td><td>키당 2,000콜</td><td>동일</td><td>7일 1,000원</td></tr>
+<tr><td>PRO 키</td><td>키당 2,000콜</td><td>동일 + 우선 지원</td><td>30일 9,900원 · 90일 24,900원</td></tr>
+</table>
+<p>자동결제 없음 — 기간 만료 시 무료 티어로 자연 복귀합니다. 키는 결제 확인 후 수동
+발급되며(영업일 1일 내), 문의·구매: <a href="https://contract.naru.build">contract.naru.build</a>
+하단 피드백 또는 GitHub 이슈.</p>
+<h2>연결 방법</h2>
+<pre style="background:#f4f4f5;padding:12px;border-radius:8px;overflow-x:auto">
+# Claude Code
+claude mcp add --transport http contract-compass https://contract.naru.build/mcp
+
+# Cursor (.cursor/mcp.json)
+{ "mcpServers": { "contract-compass": { "url": "https://contract.naru.build/mcp" } } }
+
+# 유료 키 사용 시 (헤더)
+Authorization: Bearer cc_live_...        # 또는 URL 뒤 ?key=cc_live_... (ChatGPT 커넥터)
+</pre>
+<p style="color:#666;font-size:.9rem">데이터 출처: 국가법령정보센터(law.go.kr) Open API·
+기획재정부 계약예규·조달청/행안부 세부기준·감사원 공개 간행물. 모든 응답은 정보 제공
+목적이며 법적 자문이 아닙니다. 도구 명세:
+<a href="https://github.com/kwenhwang/contract-compass/blob/master/docs/MCP.md">docs/MCP.md</a></p>
+</body></html>"""
+
+
+async def _pricing(request):  # noqa: ANN001
+    from starlette.responses import HTMLResponse
+    return HTMLResponse(_PRICING_HTML)
+
+
+for _pp in ("/pricing", "/mcp/pricing"):
+    server.custom_route(_pp, methods=["GET"], include_in_schema=False)(_pricing)
 
 
 if __name__ == "__main__":
