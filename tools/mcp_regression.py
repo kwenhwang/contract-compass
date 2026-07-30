@@ -101,6 +101,14 @@ CASES = [
      lambda d: (lambda rids: any(r.startswith("LOCAL_CST") for r in rids)
                 and not any(r.startswith("CST_") for r in rids))(
                     [(c.get("rule_id") or "") for c in d.get("candidates", [])])),
+    ("R13-전기공사-지방룰",        # 전기·정보통신은 LOCAL 룰 부재로 국가룰(CST_ELEC_*)
+     "decide_contract_method",     # 폴백이었음 — LOCAL_CST_*_ELEC/ICT 신설(지방령
+     {"contract_type": "construction", "estimated_price": 100000000,  # 25조①5호가목
+      "org_type": "local", "construction_specialty": "electrical",    # 1.6억) 회귀
+      "project_name": "회귀검사"},
+     lambda d: (lambda rids: "LOCAL_CST_NEGO_ELEC" in rids
+                and not any(r.startswith("CST_") for r in rids))(
+                    [(c.get("rule_id") or "") for c in d.get("candidates", [])])),
 ]
 
 

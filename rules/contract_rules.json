@@ -2202,7 +2202,11 @@
         "document": "전기공사업법·전기공사 적격심사세부기준",
         "page": null,
         "paragraph": "제4조, 제11조"
-      }
+      },
+      "org_type": [
+        "national",
+        "public_corp"
+      ]
     },
     {
       "rule_id": "CST_ELEC_002",
@@ -2240,7 +2244,11 @@
         "document": "전기공사업법",
         "page": null,
         "paragraph": "제4조, 제11조"
-      }
+      },
+      "org_type": [
+        "national",
+        "public_corp"
+      ]
     },
     {
       "rule_id": "CST_ELEC_003",
@@ -2275,7 +2283,11 @@
         "document": "전기공사업법",
         "page": null,
         "paragraph": "제4조"
-      }
+      },
+      "org_type": [
+        "national",
+        "public_corp"
+      ]
     },
     {
       "rule_id": "CST_ICT_001",
@@ -2344,7 +2356,11 @@
         "document": "정보통신공사업법",
         "page": null,
         "paragraph": "제14조, 제23조"
-      }
+      },
+      "org_type": [
+        "national",
+        "public_corp"
+      ]
     },
     {
       "rule_id": "CST_ICT_002",
@@ -2380,7 +2396,11 @@
         "document": "정보통신공사업법",
         "page": null,
         "paragraph": "제14조"
-      }
+      },
+      "org_type": [
+        "national",
+        "public_corp"
+      ]
     },
     {
       "rule_id": "CST_ICT_003",
@@ -2414,7 +2434,11 @@
         "document": "정보통신공사업법",
         "page": null,
         "paragraph": "제14조"
-      }
+      },
+      "org_type": [
+        "national",
+        "public_corp"
+      ]
     },
     {
       "rule_id": "CST_PRO_001",
@@ -2777,7 +2801,11 @@
         "document": "문화재수리 등에 관한 법률",
         "page": null,
         "paragraph": "제14조, 제19조"
-      }
+      },
+      "org_type": [
+        "national",
+        "public_corp"
+      ]
     },
     {
       "rule_id": "CST_HERITAGE_002",
@@ -2813,7 +2841,11 @@
         "document": "문화재수리 등에 관한 법률",
         "page": null,
         "paragraph": "제14조"
-      }
+      },
+      "org_type": [
+        "national",
+        "public_corp"
+      ]
     },
     {
       "rule_id": "CST_HERITAGE_003",
@@ -2848,7 +2880,11 @@
         "document": "문화재수리 등에 관한 법률",
         "page": null,
         "paragraph": "제14조"
-      }
+      },
+      "org_type": [
+        "national",
+        "public_corp"
+      ]
     },
     {
       "rule_id": "CST_PQ_001",
@@ -3224,6 +3260,84 @@
       "priority": 46,
       "conditions": {
         "construction_specialty": "fire_safety",
+        "estimated_price_gte": 160000000
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사",
+        "낙찰하한율_참조": "rules/local_award_criteria.json 시설공사 금액구간별(별표1~7)"
+      },
+      "legal_basis": [
+        "지방계약법 제9조①",
+        "지방계약법 시행령 제25조",
+        "행안부 예규 지방자치단체 입찰시 낙찰자 결정기준(시설공사 적격심사)"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_CST_NEGO_ELEC",
+      "org_type": "local",
+      "contract_type": "construction",
+      "name": "공사 소액수의(지자체 전기 1.6억 이하)",
+      "priority": 38,
+      "conditions": {
+        "construction_specialty": "electrical",
+        "estimated_price_lte": 160000000
+      },
+      "result": {
+        "method": "소액수의계약"
+      },
+      "legal_basis": [
+        "지방계약법 제9조",
+        "지방계약법 시행령 제25조제1항제5호가목"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_CST_COMP_ELEC",
+      "org_type": "local",
+      "contract_type": "construction",
+      "name": "공사 경쟁입찰 적격심사(지자체 전기 1.6억 이상)",
+      "priority": 46,
+      "conditions": {
+        "construction_specialty": "electrical",
+        "estimated_price_gte": 160000000
+      },
+      "result": {
+        "method": "일반경쟁입찰",
+        "bidder_selection": "적격심사",
+        "낙찰하한율_참조": "rules/local_award_criteria.json 시설공사 금액구간별(별표1~7)"
+      },
+      "legal_basis": [
+        "지방계약법 제9조①",
+        "지방계약법 시행령 제25조",
+        "행안부 예규 지방자치단체 입찰시 낙찰자 결정기준(시설공사 적격심사)"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_CST_NEGO_ICT",
+      "org_type": "local",
+      "contract_type": "construction",
+      "name": "공사 소액수의(지자체 정보통신 1.6억 이하)",
+      "priority": 38,
+      "conditions": {
+        "construction_specialty": "ict",
+        "estimated_price_lte": 160000000
+      },
+      "result": {
+        "method": "소액수의계약"
+      },
+      "legal_basis": [
+        "지방계약법 제9조",
+        "지방계약법 시행령 제25조제1항제5호가목"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_CST_COMP_ICT",
+      "org_type": "local",
+      "contract_type": "construction",
+      "name": "공사 경쟁입찰 적격심사(지자체 정보통신 1.6억 이상)",
+      "priority": 46,
+      "conditions": {
+        "construction_specialty": "ict",
         "estimated_price_gte": 160000000
       },
       "result": {

@@ -374,17 +374,17 @@
       ]
     },
     {
-      "desc": "전기공사 1.7억 지자체 — 1.6억 초과라 소액수의 불가 (2026-07-30 P0: 2억 룰 오추천 수리)",
+      "desc": "전기공사 1.7억 지자체 — 1.6억 초과라 소액수의 불가 (2026-07-30 P0: 2억 룰 오추천 수리) → 2026-07-30 LOCAL_ELEC 신설로 지방 근거 룰 승격",
       "org_type": "local",
       "params": {
         "contract_type": "construction",
         "estimated_price": 170000000,
         "construction_specialty": "electrical"
       },
-      "expect_rule_id": "CST_ELEC_002",
+      "expect_rule_id": "LOCAL_CST_COMP_ELEC",
       "expect_method": "일반경쟁입찰",
       "expect_top3": [
-        "CST_ELEC_002"
+        "LOCAL_CST_COMP_ELEC"
       ]
     },
     {
