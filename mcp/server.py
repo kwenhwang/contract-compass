@@ -1,7 +1,7 @@
 """계약나침반 MCP 서버 — 계약방법 결정·법령/코퍼스 검색을 MCP 도구로 노출.
 
 에이전트(Codex·Claude 등)가 stdio(로컬) 또는 Streamable HTTP(원격,
-https://contract.sallim.app/mcp — 별칭 https://contract.naru.build/mcp)로 붙어 계약나침반 기능을 직접 호출한다.
+https://contract.sallim.app/mcp)로 붙어 계약나침반 기능을 직접 호출한다.
 대상 인스턴스는 env `CONTRACT_COMPASS_URL`(기본 로컬 백엔드 :8402 — CF 왕복 회피).
 
 설계 원칙(2026-07-30): MCP 도구는 전부 **무LLM** — 클라이언트가 이미 LLM이므로
@@ -509,7 +509,6 @@ claude mcp add --transport http contract-compass https://contract.sallim.app/mcp
 # Cursor (.cursor/mcp.json)
 { "mcpServers": { "contract-compass": { "url": "https://contract.sallim.app/mcp" } } }
 
-# (별칭: https://contract.naru.build/mcp — 기존 등록 사용자용, 계속 동작)
 
 # 유료 키 사용 시 (헤더)
 Authorization: Bearer cc_live_...        # 또는 URL 뒤 ?key=cc_live_... (ChatGPT 커넥터)
@@ -517,7 +516,7 @@ Authorization: Bearer cc_live_...        # 또는 URL 뒤 ?key=cc_live_... (Chat
 <p style="color:#666;font-size:.9rem">데이터 출처: 국가법령정보센터(law.go.kr) Open API·
 기획재정부 계약예규·조달청/행안부 세부기준·감사원 공개 간행물. 모든 응답은 정보 제공
 목적이며 법적 자문이 아닙니다. 도구 명세:
-<a href="https://github.com/kwenhwang/contract-compass/blob/master/docs/MCP.md">docs/MCP.md</a></p>
+<a href="https://github.com/sallim-app/contract-compass/blob/master/docs/MCP.md">docs/MCP.md</a></p>
 </body></html>"""
 
 

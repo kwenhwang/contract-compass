@@ -1,7 +1,7 @@
 /*
   Zippt AI — Design Tokens
   Single source of truth for color, type, spacing, radii, shadows, motion.
-  Extracted from kwenhwang/zippt-ai → src/app.css.
+  Extracted from an internal design system.
 
   Usage:
     @import url("./colors_and_type.css");

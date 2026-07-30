@@ -4,10 +4,10 @@
   "description": "Korean public procurement law: rule-engine rulings, statutes search, live court precedents",
   "websiteUrl": "https://contract.sallim.app",
   "repository": {
-    "url": "https://github.com/kwenhwang/contract-compass",
+    "url": "https://github.com/sallim-app/contract-compass",
     "source": "github"
   },
-  "version": "1.1.1",
+  "version": "1.1.2",
   "remotes": [
     {
       "type": "streamable-http",

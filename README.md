@@ -5,7 +5,7 @@
 > searchable corpus of Korean procurement statutes/regulations/adjudication tables,
 > and live court precedents & authoritative interpretations from law.go.kr.
 > All MCP tools are **LLM-free**: your AI client does the reasoning, this server
-> provides verifiable legal grounds. Remote endpoint: `https://contract.sallim.app/mcp` (alias: `contract.naru.build/mcp`)
+> provides verifiable legal grounds. Remote endpoint: `https://contract.sallim.app/mcp`
 
 **공공계약 방법 결정 도우미** — 국가계약법·지방계약법 등 공공계약 법령을 기반으로,
 발주하려는 계약(공사·용역·물품)에 적용 가능한 계약방법(입찰·수의계약·제한경쟁 등)과
@@ -27,7 +27,7 @@
 
 ## MCP 서버 사용하기
 
-원격 엔드포인트(Streamable HTTP): **`https://contract.sallim.app/mcp`** (별칭: `https://contract.naru.build/mcp` — 기존 등록 계속 동작)
+원격 엔드포인트(Streamable HTTP): **`https://contract.sallim.app/mcp`**
 무료: IP당 50콜/일 (전 도구) · 유료 키: 한도 상향 — [요금 안내](https://contract.sallim.app/mcp/pricing)
 
 | 도구 | 설명 | LLM |

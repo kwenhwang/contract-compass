@@ -100,7 +100,7 @@ export default function HomeDashboard({ onDecision, onAsk, onGlossary }: {
                 https://contract.sallim.app/mcp
               </code>
               {' '}· 무료 50콜/일 ·{' '}
-              <a href="https://github.com/kwenhwang/contract-compass/blob/master/docs/MCP.md" target="_blank" rel="noreferrer">도구 명세</a>
+              <a href="https://github.com/sallim-app/contract-compass/blob/master/docs/MCP.md" target="_blank" rel="noreferrer">도구 명세</a>
               {' '}·{' '}
               <a href="/mcp/pricing" target="_blank" rel="noreferrer">요금 안내</a>
             </p>
