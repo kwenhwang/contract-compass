@@ -230,17 +230,48 @@ async def step1(
     for i, c in enumerate(parsed.get("candidates", [])):
         key_params = dict(c.get("key_params", {}))
         rule = rule_by_id.get(c.get("rule_id", ""))
-        if rule:
+        # 2026-07-30 R9: 지자체(local) 판정에 국가 적격심사 수치가 새는 마지막 경로 차단.
+        # org_type 미지정 룰(=전 기관 공통 — 판로지원법 중기간 경쟁제품·SW진흥법 등)은
+        # '의무' 자체가 지자체에도 적용되므로 후보에서 빼면 안 되지만, result에 박힌
+        # 통과점수·낙찰하한율은 국가(조달청) 적격심사 세부기준 값이다. 지자체는 행안부
+        # 「지방자치단체 입찰시 낙찰자 결정기준」이 적용돼 수치가 다르므로 노출하지 않고
+        # 확인처만 안내한다 — 지자체 수치를 임의로 대체하지도 않는다(미확인 값 단정 금지).
+        _local_common = (req.org_type == "local" and rule is not None
+                         and not rule.get("org_type"))
+        if _local_common:
+            key_params.pop("pass_score", None)
+            key_params.pop("lower_limit_rate", None)
+        elif rule:
             score_info = rule_engine.get_pass_score(rule, req.estimated_price)
             if score_info.get("pass_score"):
                 key_params["pass_score"] = score_info["pass_score"]
             if score_info.get("lower_limit_rate"):
                 key_params["lower_limit_rate"] = f"{score_info['lower_limit_rate'] * 100:.3f}%"
+        # 2026-07-30 R9: 지자체 판정은 수치를 제공하지 않는다(LOCAL_* 룰에 값 미인코딩,
+        # 공통 룰은 위에서 국가 수치를 제거). 빈 채로 두면 클라이언트 LLM이 국가 수치를
+        # 자체 지식으로 메우는 환각 경로가 열리므로, 확인처를 명시적으로 돌려준다.
+        if req.org_type == "local" and not (
+                key_params.get("pass_score") or key_params.get("lower_limit_rate")):
+            key_params["적격심사_기준"] = (
+                "지방자치단체는 행정안전부 「지방자치단체 입찰시 낙찰자 결정기준」이 "
+                "적용됩니다 — 통과점수·낙찰하한율은 소속 지자체 기준과 입찰공고문을 "
+                "확인하세요(국가·공기업 수치를 그대로 적용하지 마십시오)."
+            )
         # 2026-06-02 F7-1: 룰의 bidder_options·bidder_selection을 candidate에 전달
         bidder_opts = (rule.get("result", {}).get("bidder_options", []) if rule else [])
         bidder_sel = (rule.get("result", {}).get("bidder_selection") if rule else None)
         # F4-1 e2e: 룰의 legal_basis도 후속 검증·UI용으로 전달
-        rule_legal_basis = (rule.get("legal_basis", []) if rule else [])
+        rule_legal_basis = list(rule.get("legal_basis", []) if rule else [])
+        # 2026-07-30 R9: 공통 룰이 국가계약법 조문을 근거로 달고 있으면, 지자체 판정에서는
+        # 그 조문이 그대로 인용돼 오인용이 된다(지자체 근거는 지방계약법령). 조문을 임의로
+        # 치환하면 호 단위가 검증 전이라 또 다른 오인용이 되므로, 인용은 남기되 적용 한계를
+        # 명시한다 — restriction_options()의 기존 처리(조 단위 인용 + 확인 안내)와 같은 원칙.
+        if _local_common and any("국가계약법" in str(b) for b in rule_legal_basis):
+            rule_legal_basis.append(
+                "※ 위 국가계약법령 인용은 국가기관·공기업 기준입니다. 지방자치단체는 "
+                "지방계약법령(시행령 제25조·제42조 등)이 적용되므로 소속 지자체 계약 부서 "
+                "기준을 확인하세요."
+            )
         # F8-1 재정정: LLM이 method를 자체 결정하지 못하게 — 룰의 method 우선 (실무 표현 일관 유지)
         rule_method = _rule_method(rule, req.estimated_price) if rule else c.get("method", "")
         # 2026-07-29 (Codex 적대검증): LLM이 같은 rule_id로 '대안'(일반경쟁·지명경쟁 등)을

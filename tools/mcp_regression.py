@@ -112,6 +112,35 @@ CASES = [
      lambda d: (lambda rids: "LOCAL_CST_NEGO_ELEC" in rids
                 and not any(r.startswith("CST_") for r in rids))(
                     [(c.get("rule_id") or "") for c in d.get("candidates", [])])),
+    ("R15-지방-물품경쟁-국가수치",  # R8/R12가 통과하는데도 남아 있던 구멍 —
+     "decide_contract_method",     # 물품·용역 '경쟁입찰' 대역(고시금액 이상)에서 PRD_001·
+     {"contract_type": "product", "estimated_price": 300000000,  # SVC_001 등 국가 적격심사
+      "org_type": "local", "project_name": "회귀검사"},          # 룰이 org_type 미지정이라
+     lambda d: (lambda rids, kps:                                # 지자체 후보에 혼입, 국가
+                any(r.startswith("LOCAL_") for r in rids)        # 통과점수·낙찰하한율이
+                and not any(r in {"PRD_001", "PRD_003B", "PRD_006", "PRD_INTL_001"}
+                            for r in rids)
+                and not any("pass_score" in k or "lower_limit_rate" in k for k in kps))(
+                    [(c.get("rule_id") or "") for c in d.get("candidates", [])],
+                    [(c.get("key_params") or {}) for c in d.get("candidates", [])])),
+    ("R16-지방-용역경쟁-국가수치",  # R15의 용역판 (SVC_001·SVC_007·SVC_GEN_* 게이트)
+     "decide_contract_method",
+     {"contract_type": "service", "estimated_price": 300000000,
+      "org_type": "local", "project_name": "회귀검사"},
+     lambda d: (lambda rids, kps:
+                any(r.startswith("LOCAL_") for r in rids)
+                and not any(r.startswith("SVC_") and not r.startswith("SVC_SME")
+                            for r in rids)
+                and not any("pass_score" in k or "lower_limit_rate" in k for k in kps))(
+                    [(c.get("rule_id") or "") for c in d.get("candidates", [])],
+                    [(c.get("key_params") or {}) for c in d.get("candidates", [])])),
+    ("R17-국가수치-회귀",          # 위 게이트가 국가·공기업 판정까지 죽이지 않았는지
+     "decide_contract_method",     # (과잉 차단 방지 — 국가는 수치가 그대로 나와야 함)
+     {"contract_type": "product", "estimated_price": 300000000,
+      "org_type": "national", "project_name": "회귀검사"},
+     lambda d: any((c.get("key_params") or {}).get("pass_score")
+                   and (c.get("key_params") or {}).get("lower_limit_rate")
+                   for c in d.get("candidates", []))),
 ]
 
 
