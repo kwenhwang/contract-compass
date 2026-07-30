@@ -347,10 +347,43 @@ def get_case(kind: Literal["prec", "expc"], case_id: str) -> dict:
 def get_law_article(ref: str) -> dict:
     """법령 조문 원문 전체 조회.
 
+    응답의 `notes`가 비어 있지 않으면 **법률 자체의 미정비 상호인용**이 탐지된
+    것이다(예: 제5항이 '제2항 각 호'를 인용하나 제2항에 각 호가 없음). 원문은
+    law.go.kr 현행 그대로이며 우리가 고치지 않는다 — 그 조문을 근거로 답할 때는
+    notes의 내용을 사용자에게 함께 알리고 단정을 피하라.
+
     Args:
         ref: 정확한 조문 참조 (예: "국가계약법 시행령 제26조")
     """
     d = _get("/law/article", {"ref": ref})
+    if _is_error(d):
+        return d
+    if isinstance(d.get("content"), str) and len(d["content"]) > 6000:
+        d["content"] = d["content"][:6000] + "…(생략)"
+    return d
+
+
+@server.tool(annotations=READ_ONLY)
+def get_law_article_asof(ref: str, date: str) -> dict:
+    """**특정 시점에 시행 중이던** 조문 원문 조회 (law.go.kr 연혁 라이브).
+
+    get_law_article은 항상 현행이다. 과거 사건에 현행 조문을 적용하면 조용히 틀린
+    답이 된다 — 계약 체결·입찰공고·처분 시점이 과거이면 **반드시 이 도구를 쓰라**:
+      - "2023년에 체결한 계약인데 지체상금률이 맞나"
+      - "재작년 부정당업자 제재가 당시 기준으로 적법했나"
+      - 감사·분쟁·소송 대응(적용법령은 행위시법이 원칙)
+
+    응답 필드:
+      effective_date  그 시점에 시행 중이던 판의 시행일자
+      is_current      그 판이 지금도 현행인가 (False면 이후 개정됨)
+      prev/next_effective_date  직전·직후 개정 시행일 — 경계 판단용
+      notes           미정비 상호인용 경고 (get_law_article과 동일)
+
+    Args:
+        ref: 조문 참조 (예: "국가계약법 제27조", "국가계약법 시행령 제26조")
+        date: 기준일 "YYYY-MM-DD" 또는 "YYYYMMDD" (예: 계약 체결일)
+    """
+    d = _get("/law/article-asof", {"ref": ref, "date": date})
     if _is_error(d):
         return d
     if isinstance(d.get("content"), str) and len(d["content"]) > 6000:

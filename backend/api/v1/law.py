@@ -7,6 +7,11 @@ import chromadb
 
 from backend.api.deps import get_rag_service
 from backend.config import get_settings
+from backend.services.crossref import detect_crossref_anomalies
+from backend.services.law_history import (
+    LawVersion, extract_article, neighbors, parse_versions, pick_asof,
+    resolve_official_name,
+)
 
 router = APIRouter(prefix="/law", tags=["law"])
 
@@ -34,6 +39,8 @@ class LawArticleResponse(BaseModel):
     article: str
     content: str
     law_ref: str
+    # 법률 자체의 미정비 상호인용 경고(원문은 그대로) — 없으면 빈 리스트
+    notes: list[dict] = []
 
 
 class LawSearchHit(BaseModel):
@@ -174,11 +181,131 @@ def get_article(ref: str = Query(..., min_length=2, max_length=100)):
                 doc = header + "\n" + "\n".join(parts)
         except Exception:
             pass  # 조립 실패 시 parent 축약본이라도 반환
+    cleaned = _clean_markers(doc)
     return LawArticleResponse(
         law_name=meta.get("law_name", ""),
         article=article,
-        content=_clean_markers(doc),
+        content=cleaned,
         law_ref=meta.get("law_ref", ""),
+        notes=detect_crossref_anomalies(cleaned),
+    )
+
+
+# ── 시점(as-of) 조문 조회 ────────────────────────────────────────────────────
+# 코퍼스는 현행 스냅샷만 갖는다. 과거 계약·감사·분쟁은 **그 당시 시행 조문**이
+# 기준이므로 law.go.kr 연혁(eflaw)에서 해당 시점 판을 골라 라이브로 가져온다.
+_ASOF_MAX_PAGES = 3
+
+
+@lru_cache(maxsize=256)
+def _versions_cached(official: str) -> tuple:
+    """법령 연혁 목록 — eflaw 검색은 느려 프로세스 캐시를 둔다.
+
+    캐시가 낡아도 위험이 낮다: 과거 판은 불변이고, 새 개정이 누락되면 '더 오래된
+    판'을 고를 뿐 없는 조문을 지어내지 않는다. 워커 재기동 시 자연 갱신.
+    """
+    out: list[LawVersion] = []
+    seen: set[tuple[str, str]] = set()
+    for page in range(1, _ASOF_MAX_PAGES + 1):
+        xml = _drf_get("lawSearch.do", {
+            "OC": _law_oc(), "target": "eflaw", "type": "XML",
+            "query": official, "display": "100", "page": str(page),
+        })
+        page_versions = parse_versions(xml, official)
+        fresh = [v for v in page_versions if (v.ef_date, v.mst) not in seen]
+        for v in fresh:
+            seen.add((v.ef_date, v.mst))
+            out.append(v)
+        # 정확 일치는 상위 페이지에 몰린다(실측: 29건 전부 1페이지) — 빈 페이지가
+        # 나오면 더 뒤질 이유가 없다.
+        if not fresh or len(re.findall(r"<law ", xml)) < 100:
+            break
+    return tuple(sorted(out, key=lambda v: v.ef_date))
+
+
+class LawArticleAsOfResponse(BaseModel):
+    law_name: str
+    article: str
+    content: str
+    as_of: str
+    effective_date: str          # 이 시점에 시행 중이던 판의 시행일자
+    revision: str                # 제개정구분명
+    promulgation_no: str
+    is_current: bool             # 그 판이 지금도 현행인가
+    prev_effective_date: str | None = None
+    next_effective_date: str | None = None
+    total_versions: int = 0
+    notes: list[dict] = []
+
+
+@router.get("/article-asof", response_model=LawArticleAsOfResponse)
+def get_article_asof(
+    request: Request,
+    ref: str = Query(..., min_length=2, max_length=100),
+    date: str = Query(..., pattern=r"^\d{4}-?\d{2}-?\d{2}$",
+                      description="기준일 YYYY-MM-DD 또는 YYYYMMDD"),
+):
+    """특정 시점에 **시행 중이던** 조문 원문 조회 (law.go.kr 연혁 라이브).
+
+    예: 2023년 체결 계약의 적법성 검토 → ref='국가계약법 제27조', date='2023-06-01'
+    """
+    from backend.services.rate_limiter import get_rate_limiter, LIMITS_LLM
+    limiter = get_rate_limiter()
+    limiter.record(limiter.check(request, LIMITS_LLM))
+
+    as_of = date.replace("-", "")
+
+    article_match = re.search(r"제\d+조(?:의\d+)?", ref)
+    if not article_match:
+        raise HTTPException(404, "조문번호(제N조)를 찾을 수 없습니다")
+    article = article_match.group(0)
+
+    law_part = ref[: article_match.start()].strip().rstrip("ㆍ·,")
+    if not law_part:
+        raise HTTPException(404, "법령명을 식별할 수 없습니다 (예: '국가계약법 제27조')")
+    law_part = _LAW_ALIASES.get(law_part, law_part)
+    from backend.config import BASE_DIR
+    official = resolve_official_name(law_part, BASE_DIR / "tools" / "laws")
+
+    versions = list(_versions_cached(official))
+    if not versions:
+        raise HTTPException(404, f"'{official}' 법령 연혁을 law.go.kr에서 찾지 못했습니다 "
+                                 f"(정식 법령명으로 다시 시도해 보십시오)")
+
+    chosen = pick_asof(versions, as_of)
+    if chosen is None:
+        raise HTTPException(
+            404,
+            f"{as_of[:4]}-{as_of[4:6]}-{as_of[6:]} 기준으로 시행 중이던 판이 없습니다 "
+            f"(최초 시행일 {versions[0].ef_date})",
+        )
+
+    xml = _drf_get("lawService.do", {
+        "OC": _law_oc(), "target": "law", "type": "XML", "MST": chosen.mst,
+    })
+    content = extract_article(xml, article)
+    if not content:
+        raise HTTPException(
+            404,
+            f"시행 {chosen.ef_date} 판에는 {article}이 없습니다 "
+            f"(해당 시점에 신설 전이거나 삭제된 조문일 수 있습니다)",
+        )
+
+    prev_d, next_d = neighbors(versions, chosen)
+    cleaned = _clean_markers(content)
+    return LawArticleAsOfResponse(
+        law_name=chosen.name,
+        article=article,
+        content=cleaned,
+        as_of=as_of,
+        effective_date=chosen.ef_date,
+        revision=chosen.revision,
+        promulgation_no=chosen.promul_no,
+        is_current=chosen.is_current,
+        prev_effective_date=prev_d,
+        next_effective_date=next_d,
+        total_versions=len(versions),
+        notes=detect_crossref_anomalies(cleaned),
     )
 
 

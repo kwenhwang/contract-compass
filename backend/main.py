@@ -41,6 +41,7 @@ _USAGE_PREFIXES = (
 # 캐시 히트는 오리진(1 vCPU)에 도달하지 않아 레이트리밋·임베딩 비용도 안 든다.
 _EDGE_CACHE_TTL = {
     "/api/v1/law/article": 86400,
+    "/api/v1/law/article-asof": 86400,  # 과거 시점 본문은 불변
     "/api/v1/law/search": 3600,
     "/api/v1/law/references": 3600,
     "/api/v1/law/cases": 3600,
