@@ -439,6 +439,14 @@ def get_case(
     def _f(tag: str, limit: int = 2500) -> str:
         v = _cdata(tag, xml)
         return v[:limit] + ("…(생략)" if len(v) > limit else "")
+    # 2026-07-30 R9 (배터리 report_issue 제보): 검색(lawSearch)에는 뜨지만 본문
+    # API가 "일치하는 판례가 없습니다"를 주는 판례(하급심 등 본문 미제공)를
+    # 전 필드 빈 문자열로 조용히 넘기던 결함 — 구조화 오류+행동 지침으로 대체.
+    if "일치하는" in xml or not (_cdata("사건명", xml) or _cdata("안건명", xml)):
+        return {"error": "case_body_unavailable", "kind": kind, "case_id": case_id,
+                "hint": "이 판례·해석례는 law.go.kr에 본문이 제공되지 않습니다"
+                        "(하급심·타기관 제공 등). 검색 결과의 사건명·사건번호를 그대로"
+                        " 인용하되 본문 근거가 필요하면 다른 판례를 조회하세요."}
     if kind == "prec":
         return {"kind": "prec", "case_id": case_id,
                 "title": _f("사건명"), "org": _f("법원명"), "case_no": _f("사건번호"),

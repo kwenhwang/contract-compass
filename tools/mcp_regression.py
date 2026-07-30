@@ -74,6 +74,18 @@ CASES = [
      "search_law", {"query": "수의계약", "top_k": 3},
      lambda d: d.get("total_found", 0) >= d.get("count", 0) and
                (d.get("total_found") == d.get("count") or "note" in d)),
+    ("R8-지방판정-국가근거혼입",   # decide 지방 3중 결함(국가룰 SVC_002 혼입·왜절 모순·
+     "decide_contract_method",   # 20,000,001→"2,000만원" 반올림) 수리 회귀 — 2026-07-30
+     {"contract_type": "service", "estimated_price": 20000001,
+      "org_type": "local", "project_name": "회귀검사"},
+     lambda d: (lambda t: "국가계약법" not in t and "국가를 당사자" not in t
+                and "2,000만원" not in t
+                and any((c.get("rule_id") or "").startswith("LOCAL")
+                        for c in d.get("candidates", [])))(
+                    json.dumps(d, ensure_ascii=False))),
+    ("R9-판례본문미제공-가시화",   # 검색엔 뜨나 본문 미제공 판례가 빈 필드로 침묵하던
+     "get_case", {"kind": "prec", "case_id": "417684"},   # 결함(배터리 제보) 수리 회귀
+     lambda d: d.get("error") == "case_body_unavailable" and "hint" in d),
 ]
 
 
