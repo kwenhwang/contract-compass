@@ -50,7 +50,14 @@ class RuleEngine:
         ct = params.get("contract_type", "")
 
         for key, val in conditions.items():
-            if key == "estimated_price_gte" and price < val:
+            # '초과'(>)와 '이상'(≥)은 법문에서 구별된다 — 지방계약법 시행령 제25조제1항
+            # 제5호 라·마·바목은 "2천만원 초과"라 정확히 2천만원이면 그 목이 아니라
+            # 나목(2천만원 이하 소액수의)이 근거다. _gte만 있던 시절엔 경계에서 근거
+            # 조문이 틀리게 붙었다(2026-07-31 수리). 경쟁입찰 룰은 금액과 무관하게
+            # 항상 가능하므로 _gte를 유지한다.
+            if key == "estimated_price_gt" and price <= val:
+                return False
+            elif key == "estimated_price_gte" and price < val:
                 return False
             elif key == "estimated_price_lt" and price >= val:
                 return False
@@ -98,6 +105,18 @@ class RuleEngine:
                     return False
             elif key == "is_social_enterprise":
                 if params.get("is_social_enterprise", False) != val:
+                    return False
+            elif key == "is_preferential_enterprise":
+                # 지방계약법 시행령 제25조제1항제5호바목은 여성기업·장애인기업·사회적기업·
+                # 사회적협동조합·자활기업·마을기업을 **하나의 목**으로 묶는다. 예전에는
+                # is_social_enterprise 하나만 봐서, 클라이언트가 '여성기업'이라고 말하며
+                # is_women_enterprise만 세우면 수의계약 후보가 통째로 누락됐다
+                # (2026-07-30 제보 mcp: "여성기업 특례를 판정하지 못했습니다").
+                got = any(params.get(k, False) for k in (
+                    "is_preferential_enterprise", "is_women_enterprise",
+                    "is_disabled_enterprise", "is_social_enterprise",
+                ))
+                if got != val:
                     return False
             elif key == "is_tech_developed_product":
                 if params.get("is_tech_developed_product", False) != val:

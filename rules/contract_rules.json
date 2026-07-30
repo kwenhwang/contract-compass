@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "last_updated": "2026-07-30",
+  "last_updated": "2026-07-31",
   "note": "법령 개정 시 이 파일만 수정 후 POST /api/v1/admin/reload-rules 호출",
   "_meta": {
     "priority_layers": {
@@ -3433,45 +3433,9 @@
       "name": "용역 수의 소기업·소상공인(지자체 2천만~1억)",
       "priority": 34,
       "conditions": {
-        "estimated_price_gte": 20000000,
         "small_enterprise_restriction": true,
-        "estimated_price_lte": 100000000
-      },
-      "result": {
-        "method": "수의계약"
-      },
-      "legal_basis": [
-        "지방계약법 시행령 제25조제1항제5호다목"
-      ]
-    },
-    {
-      "rule_id": "LOCAL_PRD_NEGO_SMALLBIZ",
-      "org_type": "local",
-      "contract_type": "product",
-      "name": "물품 수의 소기업·소상공인(지자체 2천만~1억)",
-      "priority": 34,
-      "conditions": {
-        "estimated_price_gte": 20000000,
-        "small_enterprise_restriction": true,
-        "estimated_price_lte": 100000000
-      },
-      "result": {
-        "method": "수의계약"
-      },
-      "legal_basis": [
-        "지방계약법 시행령 제25조제1항제5호다목"
-      ]
-    },
-    {
-      "rule_id": "LOCAL_SVC_NEGO_ACADEMIC",
-      "org_type": "local",
-      "contract_type": "service",
-      "name": "용역 수의 학술연구·원가계산(지자체 2천만~1억)",
-      "priority": 34,
-      "conditions": {
-        "estimated_price_gte": 20000000,
-        "service_type": "academic",
-        "estimated_price_lte": 100000000
+        "estimated_price_lte": 100000000,
+        "estimated_price_gt": 20000000
       },
       "result": {
         "method": "수의계약"
@@ -3481,15 +3445,33 @@
       ]
     },
     {
-      "rule_id": "LOCAL_SVC_NEGO_SOCIAL",
+      "rule_id": "LOCAL_PRD_NEGO_SMALLBIZ",
       "org_type": "local",
-      "contract_type": "service",
-      "name": "용역 수의 사회적·여성·장애인기업(지자체 2천만~1억)",
+      "contract_type": "product",
+      "name": "물품 수의 소기업·소상공인(지자체 2천만~1억)",
       "priority": 34,
       "conditions": {
-        "estimated_price_gte": 20000000,
-        "is_social_enterprise": true,
-        "estimated_price_lte": 100000000
+        "small_enterprise_restriction": true,
+        "estimated_price_lte": 100000000,
+        "estimated_price_gt": 20000000
+      },
+      "result": {
+        "method": "수의계약"
+      },
+      "legal_basis": [
+        "지방계약법 시행령 제25조제1항제5호라목"
+      ]
+    },
+    {
+      "rule_id": "LOCAL_SVC_NEGO_ACADEMIC",
+      "org_type": "local",
+      "contract_type": "service",
+      "name": "용역 수의 학술연구·원가계산(지자체 2천만~1억)",
+      "priority": 34,
+      "conditions": {
+        "service_type": "academic",
+        "estimated_price_lte": 100000000,
+        "estimated_price_gt": 20000000
       },
       "result": {
         "method": "수의계약"
@@ -3499,21 +3481,39 @@
       ]
     },
     {
+      "rule_id": "LOCAL_SVC_NEGO_SOCIAL",
+      "org_type": "local",
+      "contract_type": "service",
+      "name": "용역 수의 사회적·여성·장애인기업(지자체 2천만~1억)",
+      "priority": 34,
+      "conditions": {
+        "estimated_price_lte": 100000000,
+        "is_preferential_enterprise": true,
+        "estimated_price_gt": 20000000
+      },
+      "result": {
+        "method": "수의계약"
+      },
+      "legal_basis": [
+        "지방계약법 시행령 제25조제1항제5호바목"
+      ]
+    },
+    {
       "rule_id": "LOCAL_PRD_NEGO_SOCIAL",
       "org_type": "local",
       "contract_type": "product",
       "name": "물품 수의 사회적·여성·장애인기업(지자체 2천만~1억)",
       "priority": 34,
       "conditions": {
-        "estimated_price_gte": 20000000,
-        "is_social_enterprise": true,
-        "estimated_price_lte": 100000000
+        "estimated_price_lte": 100000000,
+        "is_preferential_enterprise": true,
+        "estimated_price_gt": 20000000
       },
       "result": {
         "method": "수의계약"
       },
       "legal_basis": [
-        "지방계약법 시행령 제25조제1항제5호마목"
+        "지방계약법 시행령 제25조제1항제5호바목"
       ]
     },
     {

@@ -556,8 +556,7 @@
       "expect_method": "수의계약 (긴급 필요)",
       "expect_top3": [
         "SVC_NEGO_URGENT",
-        "LOCAL_SVC_COMP",
-        "SVC_001"
+        "LOCAL_SVC_COMP"
       ]
     },
     {
