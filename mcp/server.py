@@ -546,12 +546,14 @@ for _pp in ("/pricing", "/mcp/pricing"):
     server.custom_route(_pp, methods=["GET"], include_in_schema=False)(_pricing)
 
 
-# ── Lemon Squeezy 구매 웹훅 (2026-07-30) ─────────────────────────────────────
-# LS License Keys가 결제 시 키 생성·고객 이메일 발송까지 담당 — 이 웹훅은 그 키를
+# ── 구매 웹훅: Creem(주채널) + Lemon Squeezy(예비) ───────────────────────────
+# 결제사가 라이선스 키 생성·고객 이메일 발송까지 담당 — 이 웹훅은 그 키를
 # 대장(keystore)에 미러해 기존 sha256 인증 경로(auth.py 무수정)로 수용하고,
 # 주문·금액·고객을 매출 대장에 자동 기록한다. 환불류 이벤트는 키 회수.
-# 시크릿(LEMONSQUEEZY_WEBHOOK_SECRET) 미설정이면 503 — 계정 연결 전 비활성 상태.
+# 디스패치: creem-signature 헤더가 있으면 Creem, x-signature면 LS. 해당 채널
+# 시크릿 미설정이면 503 — 계정 연결 전 비활성 상태.
 _LS_PLANS_ENV = "LS_VARIANT_PLANS"  # JSON: {"variant_id": {"days":30,"daily":2000,"amount_krw":9900,"label":"PRO 30일"}}
+_CREEM_PLANS_ENV = "CREEM_PRODUCT_PLANS"  # JSON: {"prod_x": {"days":30,"daily":2000,"amount_krw":9500,"label":"PRO 30일"}}
 
 
 def _ls_plans() -> dict:
@@ -561,15 +563,108 @@ def _ls_plans() -> dict:
         return {}
 
 
+def _creem_plans() -> dict:
+    try:
+        return _json.loads(os.environ.get(_CREEM_PLANS_ENV, "") or "{}")
+    except Exception:
+        return {}
+
+
+def _walk_find(obj, want_key_substr: str, *, as_dict_with: str | None = None):
+    """중첩 payload에서 키 이름에 want_key_substr가 든 값을 깊이우선으로 찾는다.
+
+    Creem 문서가 checkout.completed 안 라이선스 키의 정확한 경로를 못 박지 않아
+    (transaction object 안 어딘가), 스키마 드리프트에 강한 방어적 추출을 쓴다.
+    as_dict_with가 주어지면 dict 값에서 그 하위 필드를 꺼낸다(예: license.key).
+    """
+    stack = [obj]
+    while stack:
+        cur = stack.pop()
+        if isinstance(cur, dict):
+            for k, v in cur.items():
+                if want_key_substr in k.lower():
+                    if isinstance(v, str) and v:
+                        return v
+                    if isinstance(v, dict) and as_dict_with and isinstance(v.get(as_dict_with), str):
+                        return v[as_dict_with]
+                stack.append(v)
+        elif isinstance(cur, list):
+            stack.extend(cur)
+    return None
+
+
+async def _creem_webhook(raw: bytes, request):  # noqa: ANN001
+    import hashlib as _hl
+    import hmac as _hmac
+
+    from starlette.responses import JSONResponse
+    secret = os.environ.get("CREEM_WEBHOOK_SECRET", "")
+    if not secret:
+        return JSONResponse({"error": "webhook_disabled"}, status_code=503)
+    sig = request.headers.get("creem-signature", "")
+    expect = _hmac.new(secret.encode(), raw, _hl.sha256).hexdigest()
+    if not _hmac.compare_digest(sig, expect):
+        return JSONResponse({"error": "bad_signature"}, status_code=401)
+
+    import keystore
+    try:
+        payload = _json.loads(raw)
+    except Exception:
+        return JSONResponse({"error": "bad_json"}, status_code=400)
+    event = payload.get("eventType", "")
+    obj = payload.get("object") or {}
+
+    def _order_ref() -> str:
+        order = obj.get("order")
+        oid = order.get("id") if isinstance(order, dict) else (order if isinstance(order, str) else "")
+        return f"creem-{oid or payload.get('id', '')}"
+
+    if event == "checkout.completed":
+        product = obj.get("product")
+        product_id = product.get("id") if isinstance(product, dict) else (product if isinstance(product, str) else "")
+        plan = _creem_plans().get(str(product_id), {})
+        lic = _walk_find(obj, "license", as_dict_with="key")
+        if not lic:
+            # 대시보드에서 상품의 License Key 기능이 꺼져 있으면 여기로 온다 —
+            # 조용히 넘기면 고객이 결제하고도 키를 못 받는다. 로그에 크게 남긴다.
+            print(f"[purchase-webhook] Creem checkout.completed에 라이선스 키 없음 — "
+                  f"상품 {product_id} License 기능 토글 확인 필요 (order={_order_ref()})",
+                  file=sys.stderr, flush=True)
+            return JSONResponse({"ok": False, "warning": "no_license_key",
+                                 "hint": "Creem 대시보드에서 해당 상품 License Key 기능 활성 필요"})
+        customer = obj.get("customer") or {}
+        email = customer.get("email", "") if isinstance(customer, dict) else ""
+        _, rec = keystore.issue(
+            name=plan.get("label", f"Creem {product_id}"),
+            days=int(plan.get("days", 30)),
+            daily=int(plan.get("daily", 2000)),
+            channel="creem",
+            amount_krw=int(plan.get("amount_krw", 0)),
+            contact=email,
+            order_id=_order_ref(),
+            key=lic, source="creem_mirror",
+        )
+        return JSONResponse({"ok": True, "key_prefix": rec["key_prefix"]})
+
+    if event in ("refund.created", "subscription.expired", "subscription.canceled",
+                 "dispute.created"):
+        rec = keystore.revoke_by_order(_order_ref())
+        return JSONResponse({"ok": True, "revoked": bool(rec)})
+
+    return JSONResponse({"ok": True, "ignored": event})
+
+
 async def _purchase_webhook(request):  # noqa: ANN001
     import hashlib as _hl
     import hmac as _hmac
 
     from starlette.responses import JSONResponse
+    raw = await request.body()
+    if "creem-signature" in request.headers:
+        return await _creem_webhook(raw, request)
     secret = os.environ.get("LEMONSQUEEZY_WEBHOOK_SECRET", "")
     if not secret:
         return JSONResponse({"error": "webhook_disabled"}, status_code=503)
-    raw = await request.body()
     sig = request.headers.get("x-signature", "")
     expect = _hmac.new(secret.encode(), raw, _hl.sha256).hexdigest()
     if not _hmac.compare_digest(sig, expect):
