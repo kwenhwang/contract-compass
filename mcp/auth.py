@@ -79,6 +79,22 @@ def client_ip(request) -> str:
     return request.client.host if request.client else "127.0.0.1"
 
 
+def peer_ip(request) -> str:
+    """TCP 소켓의 실제 접속자 — HTTP 헤더로 위조할 수 없는 유일한 값.
+
+    client_ip()는 쿼터 subject 산정용이라 프록시 헤더를 신뢰하지만,
+    무제한 티어 부여처럼 권한이 걸린 판정에는 이 값만 쓴다.
+
+    실증(2026-08-03 적대적 QA): quant에서 `CF-Connecting-IP: 127.0.0.1` 한 줄을
+    붙여 오리진 443에 직결하니 tier=local(무제한)이 그대로 떨어졌고, 서버 로그에
+    `{"tier":"local","subject":"127.0.0.1"}`로 기록됐다. realty-mcp는 같은 결함을
+    같은 날 peer_ip로 봉합했는데 이쪽에 이식되지 않아 열려 있었다.
+    지금은 유료 전용 도구가 없어 피해가 '무료 한도 면제'까지지만, 유료 도구가
+    하나라도 생기는 순간 헤더 한 줄로 전면 개방이 된다.
+    """
+    return request.client.host if request.client else ""
+
+
 def _extract_key(request) -> Optional[str]:
     auth_header = request.headers.get("authorization", "")
     if auth_header.lower().startswith("bearer "):
@@ -120,10 +136,11 @@ def resolve_access(request) -> Access:
         return Access("paid", rec.get("key_prefix", "paid"),
                       int(rec.get("daily_limit") or PAID_DAILY_DEFAULT))
 
-    ip = client_ip(request)
-    if ip in UNLIMITED_IPS:
-        return Access("local", ip, None)
-    return Access("free", ip, FREE_DAILY)
+    # local(무제한) 판정은 위조 불가한 소켓 주소로만. 헤더(client_ip)를 쓰면
+    # `CF-Connecting-IP: 127.0.0.1` 한 줄로 무제한이 된다(2026-08-03 실증).
+    if peer_ip(request) in UNLIMITED_IPS:
+        return Access("local", peer_ip(request), None)
+    return Access("free", client_ip(request), FREE_DAILY)
 
 
 # ---------------------------------------------------------------- 일일 쿼터
