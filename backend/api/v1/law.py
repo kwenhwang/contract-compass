@@ -1,5 +1,6 @@
 """법령 조문 원문 조회 — 법령 조문 컬렉션에서 단일 조문 조회."""
 import re
+from datetime import datetime
 from functools import lru_cache
 from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from pydantic import BaseModel
@@ -254,6 +255,12 @@ def get_article_asof(
     limiter.record(limiter.check(request, LIMITS_LLM))
 
     as_of = date.replace("-", "")
+    # 정규식은 자릿수만 본다 — 2026-01-32·2024-02-30 같은 달력상 없는 날짜가 통과하면
+    # pick_asof의 문자열 비교가 엉뚱한 시행판을 조용히 고른다(행위시법 오적용).
+    try:
+        datetime.strptime(as_of, "%Y%m%d")
+    except ValueError:
+        raise HTTPException(422, f"'{date}'는 달력에 없는 날짜입니다 (YYYY-MM-DD 형식의 실재 날짜로 지정하십시오)")
 
     article_match = re.search(r"제\d+조(?:의\d+)?", ref)
     if not article_match:
