@@ -1828,11 +1828,11 @@
       "result": {
         "method_by_amount": {
           "gte_10000000000": "종합심사낙찰제 (PQ 대상)",
-          "gte_5000000000": "일반경쟁입찰 (적격심사 별표4)"
+          "gte_5000000000": "일반경쟁입찰 (적격심사 별표1)"
         },
         "bidder_selection_by_amount": {
           "gte_10000000000": "종합심사 (입찰가격·공사수행능력·사회적책임 종합평가)",
-          "gte_5000000000": "적격심사 (별표4)"
+          "gte_5000000000": "적격심사 (별표1)"
         },
         "pass_score_by_amount": {
           "gte_10000000000": {
@@ -1843,27 +1843,27 @@
           "gte_5000000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.87495,
-            "byeolpyo": "별표3"
+            "byeolpyo": "별표1"
           },
           "gte_1000000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.88745,
-            "byeolpyo": "별표4"
+            "byeolpyo": "별표2"
           },
           "gte_300000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.89745,
-            "byeolpyo": "별표5"
+            "byeolpyo": "별표3"
           },
           "gte_200000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.89745,
-            "byeolpyo": "별표6"
+            "byeolpyo": "별표4"
           },
           "gte_0": {
             "pass_score": 95,
             "lower_limit_rate": 0.89745,
-            "byeolpyo": "별표7"
+            "byeolpyo": "별표5"
           }
         },
         "pq_required_gte": 10000000000,
@@ -1905,7 +1905,7 @@
       },
       "result": {
         "method": "일반경쟁입찰",
-        "bidder_selection": "적격심사 (별표5)",
+        "bidder_selection": "적격심사 (별표2)",
         "pass_score": 95,
         "lower_limit_rate": 0.88745,
         "procurement_agency": "자체구매",
@@ -1921,7 +1921,7 @@
       "legal_basis": [
         "국가계약법 제7조",
         "국가계약법 시행령 제42조",
-        "공사적격심사세부기준 별표5"
+        "공사적격심사세부기준 별표2"
       ],
       "notes": "10억 이상~50억 미만 공사. 95점/88.745%. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
       "source": {
@@ -1944,7 +1944,7 @@
       },
       "result": {
         "method": "일반경쟁입찰",
-        "bidder_selection": "적격심사 (별표6)",
+        "bidder_selection": "적격심사 (별표3)",
         "pass_score": 95,
         "lower_limit_rate": 0.89745,
         "procurement_agency": "자체구매",
@@ -1965,7 +1965,7 @@
       "legal_basis": [
         "국가계약법 제7조",
         "국가계약법 시행령 제42조",
-        "공사적격심사세부기준 별표6"
+        "공사적격심사세부기준 별표3"
       ],
       "notes": "3억 이상~10억 미만 공사. 95점/89.745%. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
       "source": {
@@ -1979,7 +1979,7 @@
     {
       "rule_id": "CST_004",
       "contract_type": "construction",
-      "name": "공사 종합 일반경쟁(적격심사 별표6) — 4억~10억",
+      "name": "공사 종합 일반경쟁(적격심사 별표3) — 4억~10억",
       "priority": 120,
       "conditions": {
         "estimated_price_gte": 400000000,
@@ -1988,7 +1988,7 @@
       },
       "result": {
         "method": "일반경쟁입찰",
-        "bidder_selection": "적격심사 (별표6)",
+        "bidder_selection": "적격심사 (별표3)",
         "pass_score": 95,
         "lower_limit_rate": 0.89745,
         "procurement_agency": "자체구매",
@@ -2009,7 +2009,7 @@
       "legal_basis": [
         "국가계약법 제7조",
         "국가계약법 시행령 제42조",
-        "공사적격심사세부기준 별표6"
+        "공사적격심사세부기준 별표3"
       ],
       "notes": "종합공사 4억 이상~10억 미만 일반경쟁(적격심사 별표6). 95점/89.745%. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
       "source": {
@@ -2172,7 +2172,7 @@
       },
       "result": {
         "method": "일반경쟁입찰",
-        "bidder_selection": "적격심사 (별표7)",
+        "bidder_selection": "적격심사 (금액 구간별 별표1~별표3)",
         "pass_score": 95,
         "alternatives": [
           {
@@ -2198,7 +2198,7 @@
       "legal_basis": [
         "국가계약법 제7조",
         "국가계약법 시행령 제42조",
-        "공사적격심사세부기준 별표7"
+        "공사적격심사세부기준 별표1~별표3(금액 구간별)"
       ],
       "notes": "종합공사 4억 이상~100억 미만 일반경쟁(적격심사). 95점. 낙찰하한율은 금액 구간별(50억↑ 87.495% / 10억↑ 88.745% / 3억↑ 89.745%)로 CST_001 구간표를 따른다. 지역제한 조건 해당 시 지역제한 룰(CST_006*)이 우선. 통과점수·낙찰하한율은 발주기관별 적격심사 세부기준(조달청 기준 준용이 일반적)에 따라 다를 수 있으므로 소속 기관 세부기준을 확인하세요.",
       "source": {
@@ -2230,27 +2230,27 @@
           "gte_5000000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.87495,
-            "byeolpyo": "별표3(준용)"
+            "byeolpyo": "별표1(준용)"
           },
           "gte_1000000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.88745,
-            "byeolpyo": "별표4(주1 적용)"
+            "byeolpyo": "별표2"
           },
           "gte_300000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.89745,
-            "byeolpyo": "별표4(주1 적용)"
+            "byeolpyo": "별표2"
           },
           "gte_80000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.89745,
-            "byeolpyo": "별표6(주1 적용)"
+            "byeolpyo": "별표4"
           },
           "gte_0": {
             "pass_score": 95,
             "lower_limit_rate": 0.89745,
-            "byeolpyo": "별표7(주1 적용)"
+            "byeolpyo": "별표5"
           }
         },
         "license_required": "전기공사업 등록 (전기공사업법 제4조)",
@@ -2384,27 +2384,27 @@
           "gte_5000000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.87495,
-            "byeolpyo": "별표3(준용)"
+            "byeolpyo": "별표1(준용)"
           },
           "gte_1000000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.88745,
-            "byeolpyo": "별표4(주1 적용)"
+            "byeolpyo": "별표2"
           },
           "gte_300000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.89745,
-            "byeolpyo": "별표4(주1 적용)"
+            "byeolpyo": "별표2"
           },
           "gte_80000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.89745,
-            "byeolpyo": "별표6(주1 적용)"
+            "byeolpyo": "별표4"
           },
           "gte_0": {
             "pass_score": 95,
             "lower_limit_rate": 0.89745,
-            "byeolpyo": "별표7(주1 적용)"
+            "byeolpyo": "별표5"
           }
         },
         "license_required": "정보통신공사업 등록 (정보통신공사업법 제14조)",
@@ -2535,22 +2535,22 @@
           "gte_5000000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.87495,
-            "byeolpyo": "별표3(준용)"
+            "byeolpyo": "별표1"
           },
           "gte_1000000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.88745,
-            "byeolpyo": "별표4"
+            "byeolpyo": "별표2"
           },
           "gte_300000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.89745,
-            "byeolpyo": "별표4"
+            "byeolpyo": "별표3"
           },
           "gte_0": {
             "pass_score": 95,
             "lower_limit_rate": 0.89745,
-            "byeolpyo": "별표6·7"
+            "byeolpyo": "별표4·별표5"
           }
         },
         "license_required": "해당 전문공사업 등록 (건설산업기본법 제9조)",
@@ -2676,27 +2676,27 @@
           "gte_5000000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.87495,
-            "byeolpyo": "별표3(준용)"
+            "byeolpyo": "별표1(준용)"
           },
           "gte_1000000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.88745,
-            "byeolpyo": "별표4(주1 적용)"
+            "byeolpyo": "별표2"
           },
           "gte_300000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.89745,
-            "byeolpyo": "별표4(주1 적용)"
+            "byeolpyo": "별표2"
           },
           "gte_80000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.89745,
-            "byeolpyo": "별표6(주1 적용)"
+            "byeolpyo": "별표4"
           },
           "gte_0": {
             "pass_score": 95,
             "lower_limit_rate": 0.89745,
-            "byeolpyo": "별표7(주1 적용)"
+            "byeolpyo": "별표5"
           }
         },
         "license_required": "소방시설공사업 등록 (소방시설공사업법 제4조)",
@@ -2829,27 +2829,27 @@
           "gte_5000000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.87495,
-            "byeolpyo": "별표3(준용)"
+            "byeolpyo": "별표1(준용)"
           },
           "gte_1000000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.88745,
-            "byeolpyo": "별표4(주1 적용)"
+            "byeolpyo": "별표2"
           },
           "gte_300000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.89745,
-            "byeolpyo": "별표4(주1 적용)"
+            "byeolpyo": "별표2"
           },
           "gte_80000000": {
             "pass_score": 95,
             "lower_limit_rate": 0.89745,
-            "byeolpyo": "별표6(주1 적용)"
+            "byeolpyo": "별표4"
           },
           "gte_0": {
             "pass_score": 95,
             "lower_limit_rate": 0.89745,
-            "byeolpyo": "별표7(주1 적용)"
+            "byeolpyo": "별표5"
           }
         },
         "license_required": "문화재수리업 허가 (문화재수리 등에 관한 법률 제14조)",

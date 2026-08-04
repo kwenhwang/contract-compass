@@ -14,6 +14,7 @@
 그래서 "값이 맞나"가 아니라 **"두 경로가 같은 말을 하나"**를 불변식으로 박는다.
 값의 정오는 법령 원문 대조의 몫이고, 이 테스트는 그와 무관하게 항상 유효하다.
 """
+import re
 import sys
 from pathlib import Path
 
@@ -185,3 +186,76 @@ def test_시스템_프롬프트가_확정사실_우선을_지시한다():
     src = (ROOT / "backend" / "api" / "v1" / "ask.py").read_text(encoding="utf-8")
     prompt = src.split('_SYSTEM_PROMPT = """')[1].split('"""')[0]
     assert "[확정 사실]" in prompt, "확정 사실 우선 규칙이 프롬프트에 없다"
+
+
+# ── 별표 번호는 원문 매핑을 따른다 (2026-08-05 F3 수리) ──────────────────────
+# 계기: 70억 응답 하나에 `method: "…(적격심사 별표4)"`와 `byeolpyo: "별표3"`이 공존했다.
+# 원문 대조 결과 우리 표기가 **정확히 +2 밀려** 있었고, 그래서 평가기준 자리에서
+# **경영상태 평가기준 표**를 가리키고 있었다(별표6~9가 경영상태다).
+#
+# 정본: 조달청 시설공사 적격심사세부기준 제2조제1항 + 별표 실제 표제
+#   (tools/law_tables/byl_ppa_cst_qual.pdf p1 제2조 / p5·8·10·12·13 표제)
+#   [별표1] 100억 미만 50억 이상        [별표6] 〃 — 경영상태
+#   [별표2] 50억 미만 10억 이상(전기등 3억↑)  [별표7] 〃 — 경영상태
+#   [별표3] 10억 미만 3억 이상          [별표8] 〃 등 — 경영상태
+#   [별표4] 3억 미만 2억 이상(전기등 8천만↑)  [별표9] 〃 — 경영상태
+#   [별표5] 2억 미만(전기등 8천만 미만)
+#
+# 값(요율)이 아니라 **근거 표기**라 조용히 틀려도 아무 게이트가 안 걸렸다.
+# 사용자가 "별표6"을 믿고 기준을 펴면 무관한 표가 나온다.
+
+# 종합·전문(건설산업기본법 건설공사)
+_GEN_BYEOLPYO = [
+    (7_000_000_000, "별표1"), (5_000_000_000, "별표1"),
+    (3_000_000_000, "별표2"), (1_000_000_000, "별표2"),
+    (500_000_000, "별표3"), (300_000_000, "별표3"),
+    (250_000_000, "별표4"), (200_000_000, "별표4"),
+    (100_000_000, "별표5"), (0, "별표5"),
+]
+_SPECIALTY = {"CST_ELEC_001", "CST_ICT_001", "CST_FIRE_001", "CST_HERITAGE_001"}
+# 경영상태 평가기준 — 평가기준 자리에 오면 안 되는 번호들
+_MGMT_ONLY = {"별표6", "별표7", "별표8", "별표9", "별표10"}
+
+
+@pytest.mark.parametrize("price,expected", _GEN_BYEOLPYO)
+def test_종합공사_별표는_원문_매핑을_따른다(engine, price, expected):
+    for rule in engine.match({
+        "estimated_price": price, "contract_type": "construction",
+        "construction_specialty": "general",
+    }):
+        bp = engine.get_pass_score(rule, price).get("byeolpyo")
+        if not bp:
+            continue
+        assert expected in bp, (
+            f"{rule['rule_id']} @ {price:,}원 → {bp} (원문 매핑은 {expected})")
+
+
+def test_평가기준_자리에_경영상태_별표가_오지_않는다(engine):
+    """별표6~10은 경영상태 평가기준표다 — 평가기준(별표1~5) 자리에 오면 다른 표를 편다."""
+    bad = []
+    for rule in engine._data["rules"]:
+        if rule.get("contract_type") != "construction":
+            continue
+        if rule["rule_id"].startswith(("LOCAL_", "CST_PQ")):
+            continue        # 행안부 기준·사전심사 기준은 별표 체계가 다르다
+        for key, info in ((rule.get("result", {}) or {}).get("pass_score_by_amount") or {}).items():
+            bp = info.get("byeolpyo") or ""
+            for m in _MGMT_ONLY:
+                if m in bp:
+                    bad.append(f"{rule['rule_id']}.{key}={bp}")
+    assert not bad, "평가기준 자리에 경영상태 별표: " + ", ".join(bad)
+
+
+def test_한_룰_안에서_별표_표기가_어긋나지_않는다(engine):
+    """P0의 자기모순 지점 — 같은 금액 구간에 method는 별표4, byeolpyo는 별표3이었다."""
+    for rule in engine._data["rules"]:
+        res = rule.get("result", {}) or {}
+        psba = res.get("pass_score_by_amount") or {}
+        for field in ("method_by_amount", "bidder_selection_by_amount"):
+            for key, text in (res.get(field) or {}).items():
+                nums = re.findall(r"별표\s*(\d+)", text or "")
+                ref = (psba.get(key) or {}).get("byeolpyo") or ""
+                ref_nums = re.findall(r"별표\s*(\d+)", ref)
+                if nums and ref_nums:
+                    assert set(nums) & set(ref_nums), (
+                        f"{rule['rule_id']}.{field}.{key}: {text!r} vs byeolpyo {ref!r}")
