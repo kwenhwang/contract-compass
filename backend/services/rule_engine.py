@@ -167,13 +167,35 @@ class RuleEngine:
                     return False
         return True
 
+    def _resolve_pass_score_ref(self, result: dict) -> dict | None:
+        """`pass_score_ref`(다른 룰의 rule_id)가 있으면 그 룰의 구간표를 빌려 온다.
+
+        왜 참조인가 (2026-08-05 P0 수리): 같은 낙찰하한율을 **두 룰이 각자 들고 있었다.**
+        CST_001은 금액 구간별 5단 표(50억↑ 87.495% / 10억↑ 88.745% / 3억↑ 89.745%)를
+        갖는데, CST_007은 같은 4억~100억 구간을 **단일 상수 89.745%** 하나로 덮었다.
+        구간마다 바뀌는 값을 평률로 덮었으니 구조적으로 틀릴 수밖에 없다 — 70억 종합공사
+        한 번의 질의에 87.495%(CST_001)와 89.745%(CST_007)가 **같은 응답 안에** 함께 나왔고,
+        2.25%p면 투찰 하한이 1.58억 어긋난다. 투찰은 되돌릴 수 없다.
+
+        값을 복사해 맞추면 지금은 같아지지만 다음 개정에서 또 갈린다. 사본을 늘리는 대신
+        **진실원을 하나로 만든다** — 요율이 바뀌면 고칠 곳이 한 군데다.
+        """
+        ref = result.get("pass_score_ref")
+        if not ref:
+            return None
+        for r in self._data.get("rules", []):
+            if r.get("rule_id") == ref:
+                return (r.get("result", {}) or {}).get("pass_score_by_amount")
+        return None
+
     def get_pass_score(self, rule: dict, price: int) -> dict[str, Any]:
         """규칙에서 금액별 적격심사 점수 및 낙찰하한율 계산.
 
         pass_score_by_amount 키 형식: "gte_<정수>" — 값이 큰 구간부터 매칭.
+        `pass_score_ref`가 있으면 참조 룰의 구간표를 쓴다(요율 진실원 단일화).
         """
         result = rule.get("result", {})
-        pass_score_map = result.get("pass_score_by_amount")
+        pass_score_map = result.get("pass_score_by_amount") or self._resolve_pass_score_ref(result)
 
         if pass_score_map:
             # 키("gte_N")를 숫자로 파싱, 내림차순 정렬
